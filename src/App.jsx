@@ -88,8 +88,12 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
 
   const handleOpenQrModal = (ticket, e) => {
-    if (e) e.stopPropagation();
-    const computedId = ticket.computedTransId || ticket.transactionId || ticket.transId || ticket.receipt_no || ticket.ticket_no;
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+    }
+    if (!ticket) return;
+    const computedId = ticket.computedTransId || ticket.transactionId || ticket.transId || ticket.receipt_no || ticket.ticket_no || 'N/A';
     setQrModalTicket({ ...ticket, computedTransId: computedId });
     setIsCopied(false);
     setIsQrModalOpen(true);
@@ -607,7 +611,7 @@ export default function App() {
 
       {/* Dedicated Standalone Ticket QR Code Modal */}
       {isQrModalOpen && qrModalTicket && (
-        <div className="fixed inset-0 z-60 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white border-2 border-[#002B66] rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Header */}
             <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
