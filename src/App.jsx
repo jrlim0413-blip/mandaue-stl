@@ -3,11 +3,6 @@ import {Eye,EyeOff,CalendarCheck,CreditCard,Menu,X,FileText,RefreshCw,Search,Che
 import ReturnedWinningsTab from './ReturnedWinningsTab';
 import InstallmentWinningsTab from './InstallmentWinningsTab';
 import {supabase} from './supabaseClient';
-import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
-import { Eye, EyeOff, CalendarCheck, Menu, X, FileText, RefreshCw, Search, CheckCircle2, AlertTriangle, ArrowLeftRight, Landmark, ShieldCheck, ChevronRight, UserCheck, Receipt, Check, AlertCircle, Users } from 'lucide-react';
-import ReturnedWinningsTab from './ReturnedWinningsTab';
-import AgentData from './AgentData';
-import { supabase } from './supabaseClient';
 
 const CONFIG = {
   mandaue_unclaimed: {
@@ -304,7 +299,6 @@ export default function App() {
               { id: 'pending', label: 'Unclaimed Winnings', Icon: CalendarCheck },
               { id: 'returned', label: 'Returned Winnings', Icon: ArrowLeftRight, badge: returnedData.length },
               { id: 'installment', label: 'Installment Winnings', Icon: CreditCard }
-              { id: 'agents', label: 'Agent Data', Icon: Users }
             ].map(({ id, label, Icon, badge }) => (
               <button
                 key={id}
@@ -312,8 +306,6 @@ export default function App() {
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${
                   activeTab === id ? 'bg-[#FFD700] text-[#002B66] shadow-lg font-black translate-x-1' : 'hover:bg-blue-950/60 text-blue-100 hover:text-white'
                 }`}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${activeTab === id ? 'bg-[#FFD700] text-[#002B66] shadow-lg font-black translate-x-1' : 'hover:bg-blue-950/60 text-blue-100 hover:text-white'
-                  }`}
               >
                 <div className="flex items-center gap-3"><Icon size={16} />{label}</div>
                 {badge > 0 && (
@@ -505,181 +497,13 @@ export default function App() {
                         </tfoot>
                       )}
                     </table>
-                  </div>
-                )}
-              </div>
-                {activeTab === 'pending'
-                  ? 'Unclaimed Winnings Official Registry'
-                  : activeTab === 'returned'
-                    ? 'Returned Winnings Official Audit Trail'
-                    : 'Agent & Teller Operations Directory'}
-              </h2>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-          {activeTab !== 'agents' && (
-            <button
-              onClick={() => { fetchReturnedFromSupabase(); fetchData(); }}
-              disabled={loading}
-              className="flex items-center gap-2 bg-[#002B66] hover:bg-blue-900 text-white px-3.5 py-2 rounded-lg text-xs font-extrabold tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow-md hover:shadow-lg active:scale-95"
-            >
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-              <span className="hidden sm:inline uppercase">Synchronize Ledger</span>
-            </button>
-          )}
-        </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-slate-50 flex flex-col items-center">
-          <div className="w-full max-w-6xl space-y-4">
-            {activeTab === 'agents' ? (
-              <AgentData />
-            ) : (
-              <>
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
-                  <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
-                    {[
-                      { label: 'Date From:', val: fromDate, set: setFromDate },
-                      { label: 'Date To:', val: toDate, set: setToDate }
-                    ].map(({ label, val, set }, idx) => (
-                      <div key={idx} className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-                        <label className="text-[11px] font-extrabold text-[#002B66] uppercase tracking-wider">{label}</label>
-                        <input type="date" value={val} onChange={(e) => set(e.target.value)} className="bg-transparent text-slate-900 text-xs font-mono font-bold outline-none cursor-pointer" />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="relative w-full md:w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="text"
-                      placeholder="Search username, trans ID, bet no..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2 text-xs rounded-lg focus:ring-2 focus:ring-[#002B66]/20 focus:border-[#002B66] outline-none font-medium transition-all"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { label: 'Unclaimed Records', val: totals.count, Icon: FileText, border: 'border-l-4 border-l-[#002B66]', text: 'text-[#002B66]', bg: 'bg-blue-50' },
-                    { label: 'Total Bet Volume', val: `₱${totals.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, Icon: AlertTriangle, border: 'border-l-4 border-l-[#FFD700]', text: 'text-amber-600', bg: 'bg-amber-50' },
-                    { label: 'Total Winning Liability', val: `₱${totals.winAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, Icon: CheckCircle2, border: 'border-l-4 border-l-emerald-600', text: 'text-emerald-700', bg: 'bg-emerald-50' }
-                  ].map(({ label, val, Icon, border, text, bg }, i) => (
-                    <div key={i} className={`bg-white p-4 rounded-xl border border-slate-200 ${border} shadow-xs flex items-center justify-between transition-transform hover:-translate-y-0.5`}>
-                      <div>
-                        <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest leading-none">{label}</p>
-                        <p className="text-lg font-black font-mono mt-1.5 text-slate-900 leading-tight">{val}</p>
-                      </div>
-                      <div className={`p-3 rounded-xl border border-slate-100 ${bg} ${text}`}><Icon size={20} /></div>
-                    </div>
-                  ))}
-                </div>
-                {errorMsg && (
-                  <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-bold flex items-center gap-2">
-                    <AlertCircle size={16} /> {errorMsg}
-                  </div>
-                )}
-                {activeTab === 'returned' ? (
-                  <ReturnedWinningsTab groupedData={groupedData} filteredData={filteredData} rawApiData={data} isLoadingApi={loading} formatDrawTime={formatDrawTime} onDeleteRecord={handleDeleteFromSupabase} />
-                ) : (
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mx-auto w-full">
-                    <div className="px-4 py-3 border-b border-slate-200 flex justify-between items-center bg-[#002B66]/5">
-                      <div className="flex items-center gap-2.5">
-                        <h3 className="font-extrabold text-[#002B66] text-xs uppercase tracking-wider">Unclaimed Winnings Summary</h3>
-                        <span className="text-[10px] font-bold bg-[#002B66] text-[#FFD700] px-2 py-0.5 rounded font-mono shadow-2xs">{activeDisplayDate}</span>
-                      </div>
-                      <button onClick={() => setShowDailyTable(!showDailyTable)} className="text-slate-500 hover:text-[#002B66] p-1 rounded-lg hover:bg-slate-200/50 transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer">
-                        {showDailyTable ? <Eye size={16} /> : <EyeOff size={16} />}
-                        <span>{showDailyTable ? "Hide Table" : "Show Table"}</span>
-                      </button>
-                    </div>
-                    {showDailyTable && (
-                      <div className="overflow-x-auto flex justify-center">
-                        <table className="w-full max-w-5xl text-left border-collapse my-2 shadow-xs rounded-lg overflow-hidden">
-                          <tbody className="divide-y divide-slate-200 text-xs font-medium text-slate-800">
-                            {loading ? (
-                              <tr><td colSpan="7" className="p-8 text-center text-slate-500 font-bold uppercase tracking-wider text-xs">Loading ledger data...</td></tr>
-                            ) : !Object.keys(groupedData).length ? (
-                              <tr><td colSpan="7" className="p-8 text-center text-slate-500 font-bold uppercase tracking-wider text-xs">No unclaimed records registered for the selected date.</td></tr>
-                            ) : (
-                              Object.entries(groupedData).map(([userKey, items]) => {
-                                const groupBetTotal = items.reduce((sum, item) => sum + parseFloat(item.betAmount ?? item.amount ?? item.gross ?? 0), 0);
-                                const groupWinTotal = items.reduce((sum, item) => sum + parseFloat(item.winAmount ?? 0), 0);
-                                return (
-                                  <Fragment key={userKey}>
-                                    <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                      <td colSpan="7" className="px-4 py-2 font-black text-[#002B66] text-xs uppercase tracking-wider font-mono flex items-center gap-2">
-                                        <UserCheck size={14} className="text-[#002B66]" />
-                                        <span>Supervisor / Outlet Account: {userKey}</span>
-                                      </td>
-                                    </tr>
-                                    <tr className="bg-[#002B66] text-white text-[10px] font-black uppercase tracking-wider">
-                                      <th className="px-3 py-2 border-r border-blue-950 w-1/4">Teller</th>
-                                      <th className="px-3 py-2 border-r border-blue-950">Trans. ID</th>
-                                      <th className="px-3 py-2 border-r border-blue-950">Draw</th>
-                                      <th className="px-3 py-2 border-r border-blue-950 text-center">Bet No.</th>
-                                      <th className="px-3 py-2 border-r border-blue-950 text-center">Bet Code</th>
-                                      <th className="px-3 py-2 border-r border-blue-950 text-right">Bet Amount</th>
-                                      <th className="px-3 py-2 text-right">Win Amount</th>
-                                    </tr>
-                                    {items.map((item, index) => {
-                                      const transId = item.transactionId || item.transId || item.receipt_no || item.ticket_no || `REC-${index + 1}`;
-                                      const displayAccountName = item.fullName || item.outlet || item.username || 'N/A';
-                                      const betNo = item.betNo || item.CombiNo || item.SoldOutCombiNo || 'N/A';
-                                      const betCode = item.betCode || (item.rambolito ? 'RS3' : 'TS3');
-                                      const drawFormatted = formatDrawTime(item.drawTime || item.draw, item.drawDate || item.created_at);
-                                      return (
-                                        <tr
-                                          key={index}
-                                          className="transition-colors odd:bg-white even:bg-slate-50/60 hover:bg-amber-50/80 cursor-pointer group border-b border-slate-100"
-                                          onClick={() => handleRowClick(item, index)}
-                                          title="Click row to process return"
-                                        >
-                                          <td className="px-3 py-2 border-r border-slate-200 font-bold text-slate-800 uppercase text-xs">{displayAccountName}</td>
-                                          <td className="px-3 py-2 border-r border-slate-200 font-mono text-[#002B66] font-extrabold text-xs group-hover:underline">
-                                            <div className="flex items-center justify-between">
-                                              <span>{transId}</span>
-                                              <ChevronRight size={13} className="text-slate-400 group-hover:text-[#002B66] opacity-0 group-hover:opacity-100 transition-opacity" />
-                                            </div>
-                                          </td>
-                                          <td className="px-3 py-2 border-r border-slate-200 font-mono text-xs text-slate-700 font-semibold">{drawFormatted}</td>
-                                          <td className="px-3 py-2 border-r border-slate-200 text-center font-mono font-bold text-slate-900 text-xs">{betNo}</td>
-                                          <td className="px-3 py-2 border-r border-slate-200 text-center font-mono font-bold text-slate-700 text-xs">{betCode}</td>
-                                          <td className="px-3 py-2 border-r border-slate-200 text-right font-mono font-bold text-slate-900 text-xs">
-                                            {parseFloat(item.betAmount ?? item.amount ?? item.gross ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                          </td>
-                                          <td className="px-3 py-2 text-right font-mono font-extrabold text-emerald-700 text-xs">
-                                            {parseFloat(item.winAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                    <tr className="bg-slate-100 font-black border-t border-slate-200 text-slate-900 text-xs font-mono">
-                                      <td colSpan="5" className="px-3 py-2 text-right uppercase font-sans tracking-wider text-[11px] text-[#002B66] border-r border-slate-200">Subtotal :</td>
-                                      <td className="px-3 py-2 text-right border-r border-slate-200">{groupBetTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
-                                      <td className="px-3 py-2 text-right text-emerald-700 font-extrabold">{groupWinTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</td>
-                                    </tr>
-                                  </Fragment>
-                                );
-                              })
-                            )}
-                          </tbody>
-                          {Boolean(Object.keys(groupedData).length) && (
-                            <tfoot>
-                              <tr className="bg-[#002B66] text-white font-black border-t-2 border-blue-950 text-xs font-mono">
-                                <td colSpan="5" className="px-3 py-3 text-right uppercase font-sans tracking-wider text-xs text-[#FFD700]">Grand Total Liability :</td>
-                                <td className="px-3 py-3 text-right border-r border-blue-900">₱{totals.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-3 py-3 text-right text-[#FFD700] font-extrabold text-sm">₱{totals.winAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                              </tr>
-                            </tfoot>
-                          )}
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </main>
-      </div>
+          </main>
+        </div>
       {isModalOpen && selectedTicket && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
