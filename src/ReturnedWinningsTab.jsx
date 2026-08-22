@@ -95,7 +95,11 @@ export default function ReturnedWinningsTab({
     const rows = filteredData.map(item => {
       const transId = item.transactionId || 'N/A';
       const isStillInSourceApi = checkIsInSourceApi(item, transId);
-      const status = isStillInSourceApi ? "RETURNED / UNCLAIMED" : "ALREADY CLAIMED";
+      const isUnderSettlement = Boolean(item.isUnderSettlement);
+      
+      const status = isUnderSettlement 
+        ? "UNDER SETTLEMENT" 
+        : (isStillInSourceApi ? "RETURNED / UNCLAIMED" : "ALREADY CLAIMED");
 
       return [
         `"${item.username || 'N/A'}"`, `"${item.fullName || item.outlet || 'N/A'}"`, `"${transId}"`,
@@ -146,6 +150,7 @@ export default function ReturnedWinningsTab({
                       const transId = item.transactionId || `REC-${i + 1}`;
                       const isStillInSourceApi = checkIsInSourceApi(item, transId);
                       const isClaimedInSourceSystem = !isStillInSourceApi;
+                      const isUnderSettlement = Boolean(item.isUnderSettlement);
 
                       return (
                         <tr key={item.id || item.apiId || transId || i} className="transition-colors odd:bg-white even:bg-slate-50/60 hover:bg-slate-100/80">
@@ -157,7 +162,11 @@ export default function ReturnedWinningsTab({
                           <td className="px-4 py-2 border-r border-slate-200 text-right font-mono font-bold text-slate-900">₱{parseFloat(item.betAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="px-4 py-2 border-r border-slate-200 text-right font-mono font-bold text-emerald-700">₱{parseFloat(item.winAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="px-4 py-2 border-r border-slate-200 text-center">
-                            {isClaimedInSourceSystem ? (
+                            {isUnderSettlement ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 font-bold text-[10px] px-2 py-0.5 rounded-full border border-amber-300">
+                                <Clock size={10} /> UNDER SETTLEMENT
+                              </span>
+                            ) : isClaimedInSourceSystem ? (
                               <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 font-bold text-[10px] px-2 py-0.5 rounded-full border border-emerald-300">
                                 <CheckCircle size={10} /> ALREADY CLAIMED
                               </span>
@@ -168,12 +177,12 @@ export default function ReturnedWinningsTab({
                             )}
                           </td>
                           <td className="px-4 py-2 text-center">
-                            {isClaimedInSourceSystem ? (
+                            {isClaimedInSourceSystem && !isUnderSettlement ? (
                               <button onClick={() => setSelectedForDelete({ ...item, computedTransId: transId })} className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-300 hover:border-rose-600 rounded-xs transition-all cursor-pointer">
                                 <Trash2 size={12} /> Delete
                               </button>
                             ) : (
-                              <span className="text-slate-400 text-[10px] italic">Active in API</span>
+                              <span className="text-slate-400 text-[10px] italic">{isUnderSettlement ? 'Settled' : 'Active in API'}</span>
                             )}
                           </td>
                         </tr>

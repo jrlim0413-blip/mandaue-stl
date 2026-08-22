@@ -1,8 +1,8 @@
 import {useState,useEffect,useCallback,useMemo,Fragment} from 'react';
-import {Eye,EyeOff,CalendarCheck,CreditCard,Menu,X,FileText,RefreshCw,Search,CheckCircle2,AlertTriangle,ArrowLeftRight,Landmark,ShieldCheck,ChevronRight,UserCheck,Receipt,Check,AlertCircle,QrCode,Copy} from 'lucide-react';
+import {Eye,EyeOff,CalendarCheck,Menu,X,FileText,RefreshCw,Search,CheckCircle2,AlertTriangle,ArrowLeftRight,Landmark,ShieldCheck,ChevronRight,UserCheck,Receipt,Check,AlertCircle,QrCode,Copy} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import ReturnedWinningsTab from './ReturnedWinningsTab';
-import InstallmentWinningsTab from './InstallmentWinningsTab';
+import SettlementAgreementTab from './SettlementAgreementTab';
 import {supabase} from './supabaseClient';
 
 const CONFIG = {
@@ -39,7 +39,6 @@ const parseToDateString = (dateVal) => {
 const formatDrawTime = (timeStr, drawDate) => {
   if (!timeStr && !drawDate) return 'N/A';
   let rawTime = String(timeStr || '').trim();
-  
 
   if (/^\d{1,2}$/.test(rawTime)) {
     const hourNum = parseInt(rawTime, 10);
@@ -125,7 +124,6 @@ export default function App() {
       const apiFromDate = getLocalDateString(pastDate);
       const apiToDate = getLocalDateString(targetEndDate);
       
-
       const res = await fetch(`${cfg.baseUrl}/api/accountant/UnclaimedReceipts?isClaim=${cfg.isClaim}&from=${apiFromDate}&to=${apiToDate}`, {
         method: 'GET',
         headers: {
@@ -158,7 +156,6 @@ export default function App() {
   }, [fetchData, fetchReturnedFromSupabase]);
 
   const returnedTransIds = useMemo(() => new Set(returnedData.map(i => String(i.transactionId || '').trim().toLowerCase())), [returnedData]);
-  
 
   const pendingFilteredData = useMemo(() => {
     return data.filter(i => {
@@ -216,7 +213,7 @@ export default function App() {
   }, [fromDate]);
 
   const handleRowClick = (item, index) => {
-    if (activeTab === 'returned') return;
+    if (activeTab === 'returned' || activeTab === 'settlement') return;
     setSelectedTicket({ ...item, computedTransId: item.transactionId || item.transId || item.receipt_no || item.ticket_no || `REC-${index + 1}` });
     setIsModalOpen(true);
   };
@@ -232,9 +229,9 @@ export default function App() {
       address: selectedTicket.address || null,
       location: selectedTicket.location || null,
       outlet: selectedTicket.outlet || null,
-      supervisor: selectedTicket.fullName || selectedTicket.outlet || null,
-      tellerId: selectedTicket.tellerId || null,
-      drawId: selectedTicket.drawId || null,
+      supervisor: null,
+      tellerId: selectedTicket.tellerId ? parseInt(selectedTicket.tellerId, 10) : null,
+      drawId: selectedTicket.drawId ? parseInt(selectedTicket.drawId, 10) : null,
       betCode: selectedTicket.betCode || 'RS3',
       rambolito: selectedTicket.rambolito ?? 0,
       betNo: selectedTicket.betNo || 'N/A',
@@ -255,7 +252,8 @@ export default function App() {
       CombiNo: selectedTicket.CombiNo || null,
       SoldOutCombiNo: selectedTicket.SoldOutCombiNo || null,
       drawTime: selectedTicket.drawTime || selectedTicket.draw || 'N/A',
-      drawDate: selectedTicket.drawDate || null
+      drawDate: selectedTicket.drawDate || null,
+      isUnderSettlement: false
     };
     try {
       const { data: insertedData, error } = await supabase.from('returned_winnings').insert([payload]).select();
@@ -280,6 +278,26 @@ export default function App() {
       showToast("Record successfully removed from audit ledger.");
     } catch (err) {
       alert(`Failed to remove record: ${err.message}`);
+    }
+  };
+
+  const handleSaveSettlementAgreement = async (agreementData) => {
+    try {
+      const { error } = await supabase
+        .from('returned_winnings')
+        .update({ 
+          isUnderSettlement: true,
+          settlementTerms: agreementData 
+        })
+        .eq('transactionId', agreementData.ticketId);
+
+      if (error) throw error;
+
+      showToast("Settlement Agreement successfully saved!");
+      await fetchReturnedFromSupabase();
+    } catch (err) {
+      console.error("Error saving settlement agreement:", err);
+      alert(`Failed to save agreement: ${err.message}`);
     }
   };
 
@@ -314,7 +332,7 @@ export default function App() {
             {[
               { id: 'pending', label: 'Unclaimed Winnings', Icon: CalendarCheck },
               { id: 'returned', label: 'Returned Winnings', Icon: ArrowLeftRight, badge: returnedData.length },
-              { id: 'installment', label: 'Installment Winnings', Icon: CreditCard }
+              { id: 'settlement', label: 'Settlement Agreements', Icon: FileText },
             ].map(({ id, label, Icon, badge }) => (
               <button
                 key={id}
@@ -345,7 +363,7 @@ export default function App() {
             <div className="flex items-center gap-2.5">
               <div className="w-2.5 h-2.5 rounded-full bg-[#FFD700] shadow-xs"></div>
               <h2 className="text-xs md:text-sm font-black text-[#002B66] uppercase tracking-wider">
-                {activeTab === 'pending' ? 'Unclaimed Winnings Official Registry' : 'Returned Winnings Official Audit Trail'}
+                {activeTab === 'pending' ? 'Unclaimed Winnings Official Registry' : activeTab === 'returned' ? 'Returned Winnings Official Audit Trail' : 'Settlement Agreements Management'}
               </h2>
             </div>
           </div>
@@ -360,66 +378,68 @@ export default function App() {
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-slate-50 flex flex-col items-center">
           <div className="w-full max-w-6xl space-y-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
-              <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+            {activeTab !== 'settlement' && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+                <div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+                  {[
+                    { label: 'Date From:', val: fromDate, set: setFromDate },
+                    { label: 'Date To:', val: toDate, set: setToDate }
+                  ].map(({ label, val, set }, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                      <label className="text-[11px] font-extrabold text-[#002B66] uppercase tracking-wider">{label}</label>
+                      <input type="date" value={val} onChange={(e) => set(e.target.value)} className="bg-transparent text-slate-900 text-xs font-mono font-bold outline-none cursor-pointer" />
+                    </div>
+                  ))}
+                </div>
+                <div className="relative w-full md:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Search username, trans ID, bet no..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2 text-xs rounded-lg focus:ring-2 focus:ring-[#002B66]/20 focus:border-[#002B66] outline-none font-medium transition-all"
+                  />
+                </div>
+              </div>
+            )}
+            {activeTab !== 'settlement' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
-                  { label: 'Date From:', val: fromDate, set: setFromDate },
-                  { label: 'Date To:', val: toDate, set: setToDate }
-                ].map(({ label, val, set }, idx) => (
-                  <div key={idx} className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-                    <label className="text-[11px] font-extrabold text-[#002B66] uppercase tracking-wider">{label}</label>
-                    <input type="date" value={val} onChange={(e) => set(e.target.value)} className="bg-transparent text-slate-900 text-xs font-mono font-bold outline-none cursor-pointer" />
+                  { label: 'Unclaimed Records', val: totals.count, Icon: FileText, border: 'border-l-4 border-l-[#002B66]', text: 'text-[#002B66]', bg: 'bg-blue-50' },
+                  { label: 'Total Bet Volume', val: `₱${totals.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, Icon: AlertTriangle, border: 'border-l-4 border-l-[#FFD700]', text: 'text-amber-600', bg: 'bg-amber-50' },
+                  { label: 'Total Winning Liability', val: `₱${totals.winAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, Icon: CheckCircle2, border: 'border-l-4 border-l-emerald-600', text: 'text-emerald-700', bg: 'bg-emerald-50' }
+                ].map(({ label, val, Icon, border, text, bg }, i) => (
+                  <div key={i} className={`bg-white p-4 rounded-xl border border-slate-200 ${border} shadow-xs flex items-center justify-between transition-transform hover:-translate-y-0.5`}>
+                    <div>
+                      <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest leading-none">{label}</p>
+                      <p className="text-lg font-black font-mono mt-1.5 text-slate-900 leading-tight">{val}</p>
+                    </div>
+                    <div className={`p-3 rounded-xl border border-slate-100 ${bg} ${text}`}><Icon size={20} /></div>
                   </div>
                 ))}
               </div>
-              <div className="relative w-full md:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Search username, trans ID, bet no..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2 text-xs rounded-lg focus:ring-2 focus:ring-[#002B66]/20 focus:border-[#002B66] outline-none font-medium transition-all"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { label: 'Unclaimed Records', val: totals.count, Icon: FileText, border: 'border-l-4 border-l-[#002B66]', text: 'text-[#002B66]', bg: 'bg-blue-50' },
-                { label: 'Total Bet Volume', val: `₱${totals.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, Icon: AlertTriangle, border: 'border-l-4 border-l-[#FFD700]', text: 'text-amber-600', bg: 'bg-amber-50' },
-                { label: 'Total Winning Liability', val: `₱${totals.winAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, Icon: CheckCircle2, border: 'border-l-4 border-l-emerald-600', text: 'text-emerald-700', bg: 'bg-emerald-50' }
-              ].map(({ label, val, Icon, border, text, bg }, i) => (
-                <div key={i} className={`bg-white p-4 rounded-xl border border-slate-200 ${border} shadow-xs flex items-center justify-between transition-transform hover:-translate-y-0.5`}>
-                  <div>
-                    <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest leading-none">{label}</p>
-                    <p className="text-lg font-black font-mono mt-1.5 text-slate-900 leading-tight">{val}</p>
-                  </div>
-                  <div className={`p-3 rounded-xl border border-slate-100 ${bg} ${text}`}><Icon size={20} /></div>
-                </div>
-              ))}
-            </div>
+            )}
             {errorMsg && (
               <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl text-xs font-bold flex items-center gap-2">
                 <AlertCircle size={16} /> {errorMsg}
               </div>
             )}
-            {activeTab === 'returned' ? (
+            {activeTab === 'settlement' ? (
+              <SettlementAgreementTab 
+                filteredData={returnedData} 
+                isLoadingApi={loading}
+                onSaveAgreement={handleSaveSettlementAgreement}
+              />
+            ) : activeTab === 'returned' ? (
               <ReturnedWinningsTab 
-              groupedData={groupedData}
-              filteredData={filteredData}
-              rawApiData={data} 
-              isLoadingApi={loading} 
-              formatDrawTime={formatDrawTime} 
-              onDeleteRecord={handleDeleteFromSupabase} />
-            ): activeTab === 'installment' ? (
-            <InstallmentWinningsTab 
-              groupedData={groupedData} 
-              filteredData={filteredData} 
-              rawApiData={data} 
-              isLoadingApi={loading} 
-              formatDrawTime={formatDrawTime} 
-              onUpdateInstallment={fetchReturnedFromSupabase} 
-            />
+                groupedData={groupedData}
+                filteredData={filteredData}
+                rawApiData={data} 
+                isLoadingApi={loading} 
+                formatDrawTime={formatDrawTime} 
+                onDeleteRecord={handleDeleteFromSupabase} 
+              />
             ) : (
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mx-auto w-full">
                 <div className="px-4 py-3 border-b border-slate-200 flex justify-between items-center bg-[#002B66]/5">
@@ -513,13 +533,13 @@ export default function App() {
                         </tfoot>
                       )}
                     </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </main>
-        </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
       {isModalOpen && selectedTicket && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -538,19 +558,14 @@ export default function App() {
                 </p>
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2.5 font-mono text-xs">
-                {/* Assigned Username */}
                 <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
                   <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">Assigned Username:</span>
                   <span className="font-bold text-[#002B66]">{selectedTicket.username ? `@${selectedTicket.username}` : 'N/A'}</span>
                 </div>
-
-                {/* Full Name / Outlet */}
                 <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
                   <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">Full Name / Outlet:</span>
                   <span className="font-bold text-slate-800">{selectedTicket.fullName || selectedTicket.outlet || 'N/A'}</span>
                 </div>
-
-                {/* Transaction ID - Click to pop QR Code modal */}
                 <div 
                   className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 cursor-pointer group hover:bg-blue-50/70 p-1 -mx-1 rounded transition-all"
                   onClick={(e) => handleOpenQrModal(selectedTicket, e)}
@@ -570,26 +585,18 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-
-                {/* Draw Schedule */}
                 <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
                   <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">Draw Schedule:</span>
                   <span className="font-bold text-slate-800">{formatDrawTime(selectedTicket.drawTime || selectedTicket.draw, selectedTicket.drawDate)}</span>
                 </div>
-
-                {/* Bet Combination */}
                 <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
                   <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">Bet Combination:</span>
                   <span className="font-bold text-slate-800">{selectedTicket.betNo || selectedTicket.CombiNo || 'N/A'} ({selectedTicket.betCode || (selectedTicket.rambolito ? 'RS3' : 'TS3')})</span>
                 </div>
-
-                {/* Bet Amount */}
                 <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
                   <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">Bet Amount:</span>
                   <span className="font-bold text-slate-800">₱{parseFloat(selectedTicket.betAmount ?? selectedTicket.amount ?? 0).toFixed(2)}</span>
                 </div>
-
-                {/* Win Liability */}
                 <div className="flex justify-between items-center pb-0.5">
                   <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">Win Liability:</span>
                   <span className="font-bold text-emerald-700 text-sm">₱{parseFloat(selectedTicket.winAmount ?? 0).toFixed(2)}</span>
@@ -608,12 +615,9 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* Dedicated Standalone Ticket QR Code Modal */}
       {isQrModalOpen && qrModalTicket && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-9999 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white border-2 border-[#002B66] rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
-            {/* Header */}
             <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
               <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs">
                 <QrCode size={18} className="text-[#FFD700]" />
@@ -626,10 +630,7 @@ export default function App() {
                 <X size={18} />
               </button>
             </div>
-
-            {/* Body */}
             <div className="p-6 flex flex-col items-center gap-4">
-              {/* QR Code Container */}
               <div className="bg-white p-4 rounded-2xl shadow-lg border-2 border-slate-200 flex items-center justify-center">
                 <QRCodeSVG 
                   value={String(qrModalTicket.computedTransId || qrModalTicket.transactionId || '')} 
@@ -638,8 +639,6 @@ export default function App() {
                   includeMargin={true}
                 />
               </div>
-
-              {/* Transaction ID with Copy */}
               <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Transaction ID</p>
@@ -657,8 +656,6 @@ export default function App() {
                   <span>{isCopied ? "Copied!" : "Copy"}</span>
                 </button>
               </div>
-
-              {/* Summary */}
               <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs font-mono">
                 <div className="flex justify-between items-center text-slate-600">
                   <span className="font-sans text-[11px] font-bold text-slate-500">Combination:</span>
@@ -673,14 +670,10 @@ export default function App() {
                   <span className="font-semibold text-slate-700">{formatDrawTime(qrModalTicket.drawTime || qrModalTicket.draw, qrModalTicket.drawDate)}</span>
                 </div>
               </div>
-
-              {/* Scanner Notice */}
               <div className="bg-blue-50 border border-blue-200 text-[#002B66] rounded-xl p-3 text-center text-[11px] font-semibold leading-relaxed w-full">
                 Point the <span className="font-black text-[#002B66] underline">STL Mandaue QR Scanner Mobile App</span> at this QR code to authenticate and execute payout.
               </div>
             </div>
-
-            {/* Footer */}
             <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end">
               <button 
                 onClick={() => setIsQrModalOpen(false)}
