@@ -1,14 +1,46 @@
-import { useState, Fragment } from 'react';
-import { CreditCard, PlusCircle, CheckCircle2, AlertCircle, UserCheck, History, ShieldCheck, ArrowUpRight } from 'lucide-react';
+import { useState, Fragment, useEffect } from 'react';
+import { CreditCard, PlusCircle, UserCheck, History } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
-export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUpdateInstallment }) {
+export default function InstallmentWinningsTab() {
+  const [installmentData, setInstallmentData] = useState([]);
+  const [isLoadingApi, setIsLoadingApi] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch data mula sa hiwalay na installment_winnings table
+  const fetchInstallmentRecords = async () => {
+    setIsLoadingApi(true);
+    try {
+      const { data, error } = await supabase
+        .from('installment_winnings')
+        .select('*')
+        .order('createdAt', { ascending: false });
+
+      if (error) throw error;
+      setInstallmentData(data || []);
+    } catch (err) {
+      console.error('Error fetching installment records:', err.message);
+    } finally {
+      setIsLoadingApi(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInstallmentRecords();
+  }, []);
+
+  // Group data by Supervisor/Account para maging pareho ang itsura sa layout mo
+  const groupedData = installmentData.reduce((acc, item) => {
+    const key = item.supervisor || item.username || 'UNASSIGNED';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
 
   const handleOpenPayment = (item) => {
     setSelectedRecord(item);
@@ -40,7 +72,7 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
       };
 
       const { error } = await supabase
-        .from('returned_winnings')
+        .from('installment_winnings')
         .update({ 
           totalPaid: updatedPaid, 
           installmentStatus: newStatus,
@@ -50,9 +82,7 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
 
       if (error) throw error;
       
-      if (onUpdateInstallment) {
-        onUpdateInstallment();
-      }
+      await fetchInstallmentRecords();
       setIsPaymentModalOpen(false);
       setSelectedRecord(null);
     } catch (err) {
@@ -64,7 +94,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mx-auto w-full max-w-6xl">
-      {/* Header Banner */}
       <div className="px-5 py-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[#002B66]/5 gap-2">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-[#002B66] text-[#FFD700] rounded-lg shadow-xs">
@@ -80,7 +109,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
         </div>
       </div>
       
-      {/* Table Section */}
       <div className="overflow-x-auto flex justify-center p-3">
         <table className="w-full text-left border-collapse shadow-xs rounded-lg overflow-hidden border border-slate-200">
           <tbody className="divide-y divide-slate-200 text-xs font-medium text-slate-800">
@@ -96,7 +124,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
 
                 return (
                   <Fragment key={userKey}>
-                    {/* Supervisor / Account Group Header */}
                     <tr className="bg-slate-100 border-t-2 border-slate-300">
                       <td colSpan="7" className="px-4 py-2.5 font-black text-[#002B66] text-xs uppercase tracking-wider font-mono flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -108,8 +135,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                         </div>
                       </td>
                     </tr>
-
-                    {/* Table Columns Header */}
                     <tr className="bg-[#002B66] text-white text-[10px] font-black uppercase tracking-wider">
                       <th className="px-3.5 py-2.5 border-r border-blue-950">Teller / Outlet</th>
                       <th className="px-3.5 py-2.5 border-r border-blue-950">Trans. ID</th>
@@ -129,14 +154,9 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                       const status = item.installmentStatus || (paidAmt >= winAmt ? 'Fully Paid' : 'Active Installment');
 
                       return (
-                        <tr
-                          key={index}
-                          className="transition-colors odd:bg-white even:bg-slate-50/50 hover:bg-amber-50/60 border-b border-slate-100"
-                        >
+                        <tr key={index} className="transition-colors odd:bg-white even:bg-slate-50/50 hover:bg-amber-50/60 border-b border-slate-100">
                           <td className="px-3.5 py-2.5 border-r border-slate-200 font-bold text-slate-800 uppercase text-xs">{displayAccountName}</td>
-                          <td className="px-3.5 py-2.5 border-r border-slate-200 font-mono text-[#002B66] font-extrabold text-xs">
-                            <span>{transId}</span>
-                          </td>
+                          <td className="px-3.5 py-2.5 border-r border-slate-200 font-mono text-[#002B66] font-extrabold text-xs">{transId}</td>
                           <td className="px-3.5 py-2.5 border-r border-slate-200 text-right font-mono font-bold text-slate-900 text-xs">
                             ₱{winAmt.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </td>
@@ -156,7 +176,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                               onClick={() => handleOpenPayment(item)}
                               disabled={status === 'Fully Paid'}
                               className="bg-[#002B66] hover:bg-blue-900 disabled:opacity-40 text-[#FFD700] px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs transition-transform active:scale-95 inline-flex items-center gap-1"
-                              title="Record Payment"
                             >
                               <PlusCircle size={12} />
                               <span>Collect</span>
@@ -164,7 +183,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                             <button
                               onClick={() => handleOpenHistory(item)}
                               className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-xs transition-colors inline-flex items-center gap-1"
-                              title="View Payment Logs"
                             >
                               <History size={12} />
                             </button>
@@ -183,7 +201,7 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
       {/* Collect Payment Modal */}
       {isPaymentModalOpen && selectedRecord && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
             <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
               <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs">
                 <CreditCard size={16} className="text-[#FFD700]" />
@@ -204,7 +222,7 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                   placeholder="0.00"
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg font-mono font-bold text-xs outline-none focus:ring-2 focus:ring-[#002B66]/20 focus:border-[#002B66]"
+                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg font-mono font-bold text-xs outline-none focus:ring-2 focus:ring-[#002B66]/20"
                   autoFocus
                 />
               </div>
@@ -215,12 +233,12 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                   placeholder="e.g., Weekly installment payment #1"
                   value={paymentNotes}
                   onChange={(e) => setPaymentNotes(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-[#002B66]/20 focus:border-[#002B66]"
+                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-[#002B66]/20"
                 />
               </div>
             </div>
             <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end gap-2.5">
-              <button onClick={() => setIsPaymentModalOpen(false)} disabled={isSaving} className="px-4 py-2 rounded-lg border border-slate-300 font-extrabold text-slate-700 hover:bg-slate-200 uppercase text-xs cursor-pointer transition-colors">
+              <button onClick={() => setIsPaymentModalOpen(false)} disabled={isSaving} className="px-4 py-2 rounded-lg border border-slate-300 font-extrabold text-slate-700 hover:bg-slate-200 uppercase text-xs cursor-pointer">
                 Cancel
               </button>
               <button onClick={handleSavePayment} disabled={isSaving} className="px-5 py-2 rounded-lg bg-[#002B66] hover:bg-blue-900 text-white font-black uppercase text-xs flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50">
@@ -231,10 +249,10 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
         </div>
       )}
 
-      {/* Payment History / Logs Modal */}
+      {/* Payment History Modal */}
       {isHistoryModalOpen && selectedRecord && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
               <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs">
                 <History size={16} className="text-[#FFD700]" />
@@ -247,7 +265,6 @@ export default function InstallmentWinningsTab({ groupedData, isLoadingApi, onUp
                 <p className="font-bold text-[#002B66]">Trans ID: {selectedRecord.transactionId}</p>
                 <p>Account: {selectedRecord.fullName || selectedRecord.outlet || selectedRecord.username}</p>
               </div>
-              
               <div className="space-y-2">
                 <h4 className="font-extrabold text-[#002B66] uppercase tracking-wider text-[11px]">Transaction Logs:</h4>
                 {!selectedRecord.paymentHistory || selectedRecord.paymentHistory.length === 0 ? (
