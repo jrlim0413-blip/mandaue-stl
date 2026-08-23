@@ -185,7 +185,7 @@ export default function Login({ onLoginSuccess }) {
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
               <div className="space-y-1.5">
                 <label className="font-semibold text-slate-300 flex items-center gap-2">
-                  <User size={13} className="text-amber-400" /> Username / Agent ID
+                  <User size={13} className="text-amber-400" /> Username
                 </label>
                 <input 
                   type="text" 
