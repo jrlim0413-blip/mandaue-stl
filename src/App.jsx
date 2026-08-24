@@ -1,6 +1,7 @@
 import {useState, useEffect, useCallback, useMemo} from 'react';
-import {Eye, EyeOff, CalendarCheck, Menu, X, FileText, RefreshCw, Search, CheckCircle2, AlertTriangle, ArrowLeftRight, Landmark, ShieldCheck, ChevronRight, UserCheck, Receipt, Check, AlertCircle, QrCode, LogOut, Copy} from 'lucide-react';
+import {Eye, EyeOff, CalendarCheck, Menu, X, FileText, RefreshCw, Search, CheckCircle2, AlertTriangle, ArrowLeftRight, Landmark, ShieldCheck, ChevronRight, UserCheck, Receipt, Check, AlertCircle, QrCode, LogOut, Copy, Image as ImageIcon, Download} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { toBlob, toPng } from 'html-to-image';
 import ReturnedWinningsTab from './ReturnedWinningsTab';
 import SettlementAgreementTab from './SettlementAgreementTab';
 import Login from './Login'; // <--- Import ang iyong Login component
@@ -92,6 +93,8 @@ export default function App() {
   const [qrModalTicket, setQrModalTicket] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
   const [copiedTransIds, setCopiedTransIds] = useState(() => new Set());
+  const [isCapturingImage, setIsCapturingImage] = useState(null);
+  const [copiedSupervisorKey, setCopiedSupervisorKey] = useState(null);
 
   const handleCopyTransId = (id) => {
     if (!id) return;
@@ -103,6 +106,61 @@ export default function App() {
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
     showToast(`Transaction ID ${strId} copied to clipboard.`);
+  };
+
+  const handleCopySupervisorImage = async (userKey) => {
+    if (!userKey) return;
+    setIsCapturingImage(userKey);
+    try {
+      const element = document.getElementById(`supervisor-table-capture-${userKey}`);
+      if (!element) throw new Error("Supervisor table element not found");
+
+      // Use toPng with explicit dimensions and pixelRatio
+      const dataUrl = await toPng(element, {
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+      });
+
+      if (!dataUrl) throw new Error("Could not generate image data");
+
+      // Convert dataUrl to blob
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+
+      let copiedToClipboard = false;
+      if (navigator.clipboard && window.ClipboardItem) {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          copiedToClipboard = true;
+        } catch (clipErr) {
+          console.warn("ClipboardItem write failed, falling back to download:", clipErr);
+        }
+      }
+
+      if (copiedToClipboard) {
+        setCopiedSupervisorKey(userKey);
+        setTimeout(() => setCopiedSupervisorKey(null), 2500);
+        showToast(`Copied table image for Supervisor ${userKey} to clipboard!`);
+      } else {
+        const link = document.createElement('a');
+        link.download = `Supervisor_${userKey}_Unclaimed_${getLocalDateString()}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setCopiedSupervisorKey(userKey);
+        setTimeout(() => setCopiedSupervisorKey(null), 2500);
+        showToast(`Table image for Supervisor ${userKey} downloaded!`);
+      }
+    } catch (err) {
+      console.error("Error capturing table image:", err);
+      alert(`Unable to copy table image: ${err.message}`);
+    } finally {
+      setIsCapturingImage(null);
+    }
   };
 
   const handleOpenQrModal = (ticket, e) => {
@@ -531,13 +589,121 @@ export default function App() {
                         const groupBetTotal = items.reduce((sum, item) => sum + parseFloat(item.betAmount ?? item.amount ?? item.gross ?? 0), 0);
                         const groupWinTotal = items.reduce((sum, item) => sum + parseFloat(item.winAmount ?? 0), 0);
                         return (
-                          <div key={userKey} className="mb-4 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-                            <div className="bg-slate-100 border-b border-slate-200 px-4 py-2.5 font-black text-[#002B66] text-xs uppercase tracking-wider font-mono flex items-center justify-between">
+                          <div key={userKey} id={`supervisor-card-${userKey}`} className="mb-4 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+                            <div className="bg-slate-100 border-b border-slate-200 px-4 py-2.5 font-black text-[#002B66] text-xs uppercase tracking-wider font-mono flex items-center justify-between flex-wrap gap-2">
                               <div className="flex items-center gap-2 truncate">
                                 <UserCheck size={14} className="text-[#002B66] shrink-0" />
                                 <span className="truncate">Supervisor / Outlet: {userKey}</span>
                               </div>
-                              <span className="text-[10px] bg-blue-100 text-[#002B66] px-2 py-0.5 rounded shrink-0">{items.length} items</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] bg-blue-100 text-[#002B66] px-2 py-0.5 rounded shrink-0">{items.length} items</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleCopySupervisorImage(userKey);
+                                  }}
+                                  disabled={isCapturingImage === userKey}
+                                  className="flex items-center gap-1.5 bg-[#002B66] hover:bg-blue-900 text-[#FFD700] text-[10px] font-black px-2.5 py-1 rounded-md shadow-xs cursor-pointer transition-all active:scale-95 disabled:opacity-50 shrink-0"
+                                  title={`Copy ${userKey} table as image`}
+                                >
+                                  {isCapturingImage === userKey ? (
+                                    <>
+                                      <RefreshCw size={12} className="animate-spin" />
+                                      <span>Capturing...</span>
+                                    </>
+                                  ) : copiedSupervisorKey === userKey ? (
+                                    <>
+                                      <Check size={12} className="text-emerald-400" />
+                                      <span>Image Copied!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ImageIcon size={12} />
+                                      <span>Copy Image</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Dedicated container for 100% pixel-perfect table image capture */}
+                            <div 
+                              id={`supervisor-table-capture-${userKey}`} 
+                              style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                width: '960px',
+                                zIndex: -9999,
+                                pointerEvents: 'none',
+                                backgroundColor: '#ffffff',
+                                padding: '16px'
+                              }}
+                            >
+                              <div style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden' }}>
+                                {/* Header */}
+                                <div style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <UserCheck size={18} color="#002B66" />
+                                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#002B66', fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                      SUPERVISOR / OUTLET: {userKey}
+                                    </span>
+                                  </div>
+                                  <span style={{ fontSize: '11px', fontWeight: 900, backgroundColor: '#e0f2fe', color: '#002B66', padding: '3px 10px', borderRadius: '6px', fontFamily: 'monospace' }}>
+                                    {items.length} ITEMS
+                                  </span>
+                                </div>
+
+                                {/* Table */}
+                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', backgroundColor: '#ffffff' }}>
+                                  <thead>
+                                    <tr style={{ backgroundColor: '#002B66', color: '#ffffff', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                      <th style={{ padding: '10px 14px', borderRight: '1px solid #001f4d', width: '20%' }}>TELLER</th>
+                                      <th style={{ padding: '10px 14px', borderRight: '1px solid #001f4d', width: '20%' }}>TRANS. ID</th>
+                                      <th style={{ padding: '10px 14px', borderRight: '1px solid #001f4d', width: '18%' }}>DRAW</th>
+                                      <th style={{ padding: '10px 14px', borderRight: '1px solid #001f4d', textAlign: 'center', width: '10%' }}>BET NO.</th>
+                                      <th style={{ padding: '10px 14px', borderRight: '1px solid #001f4d', textAlign: 'center', width: '10%' }}>CODE</th>
+                                      <th style={{ padding: '10px 14px', borderRight: '1px solid #001f4d', textAlign: 'right', width: '11%' }}>BET AMOUNT</th>
+                                      <th style={{ padding: '10px 14px', textAlign: 'right', width: '11%' }}>WIN AMOUNT</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody style={{ fontSize: '12px', fontWeight: 600, color: '#1e293b' }}>
+                                    {items.map((item, index) => {
+                                      const transId = item.transactionId || item.transId || item.receipt_no || item.ticket_no || `REC-${index + 1}`;
+                                      const displayAccountName = item.fullName || item.outlet || item.username || 'N/A';
+                                      const betNo = item.betNo || item.CombiNo || item.SoldOutCombiNo || 'N/A';
+                                      const betCode = item.betCode || (item.rambolito ? 'RS3' : 'TS3');
+                                      const drawFormatted = formatDrawTime(item.drawTime || item.draw, item.drawDate || item.created_at);
+                                      const isEven = index % 2 === 1;
+                                      return (
+                                        <tr key={index} style={{ backgroundColor: isEven ? '#f8fafc' : '#ffffff', borderBottom: '1px solid #f1f5f9' }}>
+                                          <td style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase' }}>{displayAccountName}</td>
+                                          <td style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', fontFamily: 'monospace', color: '#002B66', fontWeight: 900 }}>{transId}</td>
+                                          <td style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', fontFamily: 'monospace', color: '#334155', fontWeight: 700 }}>{drawFormatted}</td>
+                                          <td style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', textAlign: 'center', fontFamily: 'monospace', fontWeight: 900, color: '#0f172a' }}>{betNo}</td>
+                                          <td style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: '#334155' }}>{betCode}</td>
+                                          <td style={{ padding: '10px 14px', borderRight: '1px solid #e2e8f0', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#0f172a' }}>
+                                            {parseFloat(item.betAmount ?? item.amount ?? item.gross ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td style={{ padding: '10px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#047857' }}>
+                                            {parseFloat(item.winAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+
+                                {/* Footer Subtotal */}
+                                <div style={{ backgroundColor: '#f8fafc', padding: '12px 18px', fontWeight: 900, borderTop: '1px solid #e2e8f0', color: '#0f172a', fontSize: '12px', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em', color: '#002B66', fontWeight: 900 }}>SUBTOTAL ({userKey}):</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                                    <span style={{ color: '#334155', fontWeight: 800 }}>Bet: ₱{groupBetTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
+                                    <span style={{ color: '#047857', fontWeight: 900, fontSize: '13px' }}>Win: ₱{groupWinTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
 
                             <div className="hidden md:block w-full overflow-x-auto">
