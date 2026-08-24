@@ -738,36 +738,47 @@ export default function App() {
       )}
 
       {/* QR Code Modal Overlay using QRCodeSVG */}
-      {isQrModalOpen && qrModalTicket && (
-        <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-sm w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-[#002B66] text-white px-4 py-3 flex justify-between items-center border-b-2 border-[#FFD700]">
-              <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs truncate">
-                <QrCode size={16} className="text-[#FFD700] shrink-0" />
-                <span className="truncate">Transaction QR Code</span>
+     {isModalOpen && selectedTicket && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
+              <div className="flex items-center gap-2.5 font-black uppercase tracking-wider text-xs">
+                <Receipt size={18} className="text-[#FFD700]" />
+                <span>Confirm Winnings Return Entry</span>
               </div>
-              <button onClick={() => setIsQrModalOpen(false)} className="text-slate-300 hover:text-white cursor-pointer"><X size={16} /></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white cursor-pointer"><X size={18} /></button>
             </div>
-            <div className="p-6 flex flex-col items-center justify-center space-y-4 bg-slate-50">
-              <div className="bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center">
-                <QRCodeSVG 
-                  value={qrModalTicket.computedTransId || ''} 
-                  size={180}
-                  level="H"
-                  includeMargin={true}
-                />
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg flex items-start gap-2.5">
+                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="font-semibold leading-relaxed">
+                  Please review the ticket specifications below before transferring this record into the <span className="font-bold underline">Returned Winnings Audit Ledger</span>.
+                </p>
               </div>
-              <div className="text-center space-y-1 w-full">
-                <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">Reference Transaction ID</span>
-                <p className="font-mono text-xs font-black text-[#002B66] bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 select-all truncate">{qrModalTicket.computedTransId}</p>
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2.5 font-mono text-xs">
+                {[
+                  { l: 'Assigned Username:', v: selectedTicket.username ? `@${selectedTicket.username}` : 'N/A', b: true, c: 'text-[#002B66]' },
+                  { l: 'Full Name / Outlet:', v: selectedTicket.fullName || selectedTicket.outlet || 'N/A', b: true },
+                  { l: 'Transaction ID:', v: selectedTicket.computedTransId, b: true, c: 'text-[#002B66]' },
+                  { l: 'Draw Schedule:', v: formatDrawTime(selectedTicket.drawTime || selectedTicket.draw, selectedTicket.drawDate), b: true },
+                  { l: 'Bet Combination:', v: `${selectedTicket.betNo || selectedTicket.CombiNo || 'N/A'} (${selectedTicket.betCode || (selectedTicket.rambolito ? 'RS3' : 'TS3')})`, b: true },
+                  { l: 'Bet Amount:', v: `₱${parseFloat(selectedTicket.betAmount ?? selectedTicket.amount ?? 0).toFixed(2)}`, b: true },
+                  { l: 'Win Liability:', v: `₱${parseFloat(selectedTicket.winAmount ?? 0).toFixed(2)}`, b: true, c: 'text-emerald-700 font-bold text-sm' }
+                ].map(({ l, v, b, c }, i) => (
+                  <div key={i} className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 last:border-b-0">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">{l}</span>
+                    <span className={`${b ? 'font-bold' : ''} ${c || 'text-slate-800'}`}>{v}</span>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="bg-slate-100 px-4 py-3 border-t border-slate-200 flex justify-end">
-              <button 
-                onClick={() => setIsQrModalOpen(false)}
-                className="w-full px-4 py-2 rounded-lg bg-[#002B66] hover:bg-blue-900 text-white font-black uppercase text-xs tracking-wider transition-colors cursor-pointer"
-              >
-                Close
+            <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end gap-3">
+              <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="px-4 py-2 rounded-lg border border-slate-300 font-extrabold text-slate-700 hover:bg-slate-200 cursor-pointer uppercase text-xs transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleConfirmReturn} disabled={isSaving} className="px-5 py-2 rounded-lg bg-[#002B66] hover:bg-blue-900 text-white font-black cursor-pointer uppercase text-xs flex items-center gap-2 disabled:opacity-50 shadow-md transition-all active:scale-95">
+                <Check size={14} className="text-[#FFD700]" />
+                <span>{isSaving ? "Processing Transfer..." : "Execute Transfer"}</span>
               </button>
             </div>
           </div>
