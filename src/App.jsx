@@ -1,5 +1,5 @@
 import {useState, useEffect, useCallback, useMemo} from 'react';
-import {Eye, EyeOff, CalendarCheck, Menu, X, FileText, RefreshCw, Search, CheckCircle2, AlertTriangle, ArrowLeftRight, Landmark, ShieldCheck, ChevronRight, UserCheck, Receipt, Check, AlertCircle, QrCode, LogOut} from 'lucide-react';
+import {Eye, EyeOff, CalendarCheck, Menu, X, FileText, RefreshCw, Search, CheckCircle2, AlertTriangle, ArrowLeftRight, Landmark, ShieldCheck, ChevronRight, UserCheck, Receipt, Check, AlertCircle, QrCode, LogOut, Copy} from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import ReturnedWinningsTab from './ReturnedWinningsTab';
 import SettlementAgreementTab from './SettlementAgreementTab';
@@ -90,6 +90,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrModalTicket, setQrModalTicket] = useState(null);
+  const [isCopied, setIsCopied] = useState(false);
 
   const handleOpenQrModal = (ticket, e) => {
     if (e) {
@@ -99,6 +100,7 @@ export default function App() {
     if (!ticket) return;
     const computedId = ticket.computedTransId || ticket.transactionId || ticket.transId || ticket.receipt_no || ticket.ticket_no || 'N/A';
     setQrModalTicket({ ...ticket, computedTransId: computedId });
+    setIsCopied(false);
     setIsQrModalOpen(true);
   };
 
@@ -737,48 +739,84 @@ export default function App() {
         </div>
       )}
 
-      {/* QR Code Modal Overlay using QRCodeSVG */}
-     {isModalOpen && selectedTicket && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      {/* Dedicated Standalone Ticket QR Code Modal */}
+      {isQrModalOpen && qrModalTicket && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white border-2 border-[#002B66] rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Header */}
             <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
-              <div className="flex items-center gap-2.5 font-black uppercase tracking-wider text-xs">
-                <Receipt size={18} className="text-[#FFD700]" />
-                <span>Confirm Winnings Return Entry</span>
+              <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs">
+                <QrCode size={18} className="text-[#FFD700]" />
+                <span>Ticket QR Code</span>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white cursor-pointer"><X size={18} /></button>
-            </div>
-            <div className="p-5 space-y-4 text-xs">
-              <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg flex items-start gap-2.5">
-                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                <p className="font-semibold leading-relaxed">
-                  Please review the ticket specifications below before transferring this record into the <span className="font-bold underline">Returned Winnings Audit Ledger</span>.
-                </p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2.5 font-mono text-xs">
-                {[
-                  { l: 'Assigned Username:', v: selectedTicket.username ? `@${selectedTicket.username}` : 'N/A', b: true, c: 'text-[#002B66]' },
-                  { l: 'Full Name / Outlet:', v: selectedTicket.fullName || selectedTicket.outlet || 'N/A', b: true },
-                  { l: 'Transaction ID:', v: selectedTicket.computedTransId, b: true, c: 'text-[#002B66]' },
-                  { l: 'Draw Schedule:', v: formatDrawTime(selectedTicket.drawTime || selectedTicket.draw, selectedTicket.drawDate), b: true },
-                  { l: 'Bet Combination:', v: `${selectedTicket.betNo || selectedTicket.CombiNo || 'N/A'} (${selectedTicket.betCode || (selectedTicket.rambolito ? 'RS3' : 'TS3')})`, b: true },
-                  { l: 'Bet Amount:', v: `₱${parseFloat(selectedTicket.betAmount ?? selectedTicket.amount ?? 0).toFixed(2)}`, b: true },
-                  { l: 'Win Liability:', v: `₱${parseFloat(selectedTicket.winAmount ?? 0).toFixed(2)}`, b: true, c: 'text-emerald-700 font-bold text-sm' }
-                ].map(({ l, v, b, c }, i) => (
-                  <div key={i} className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 last:border-b-0">
-                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase">{l}</span>
-                    <span className={`${b ? 'font-bold' : ''} ${c || 'text-slate-800'}`}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end gap-3">
-              <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="px-4 py-2 rounded-lg border border-slate-300 font-extrabold text-slate-700 hover:bg-slate-200 cursor-pointer uppercase text-xs transition-colors">
-                Cancel
+              <button 
+                onClick={() => setIsQrModalOpen(false)} 
+                className="text-slate-300 hover:text-white cursor-pointer p-1 rounded-md hover:bg-white/10 transition-colors"
+              >
+                <X size={18} />
               </button>
-              <button onClick={handleConfirmReturn} disabled={isSaving} className="px-5 py-2 rounded-lg bg-[#002B66] hover:bg-blue-900 text-white font-black cursor-pointer uppercase text-xs flex items-center gap-2 disabled:opacity-50 shadow-md transition-all active:scale-95">
-                <Check size={14} className="text-[#FFD700]" />
-                <span>{isSaving ? "Processing Transfer..." : "Execute Transfer"}</span>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 flex flex-col items-center gap-4">
+              {/* QR Code Container */}
+              <div className="bg-white p-4 rounded-2xl shadow-lg border-2 border-slate-200 flex items-center justify-center">
+                <QRCodeSVG 
+                  value={String(qrModalTicket.computedTransId || qrModalTicket.transactionId || '')} 
+                  size={190} 
+                  level="H" 
+                  includeMargin={true}
+                />
+              </div>
+
+              {/* Transaction ID with Copy */}
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Transaction ID</p>
+                  <p className="font-mono text-xs md:text-sm font-black text-[#002B66]">{qrModalTicket.computedTransId || qrModalTicket.transactionId}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(qrModalTicket.computedTransId || qrModalTicket.transactionId);
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  }}
+                  className="flex items-center gap-1 bg-[#002B66] hover:bg-blue-900 text-[#FFD700] text-xs font-black px-3 py-1.5 rounded-lg shadow-xs cursor-pointer transition-all active:scale-95"
+                >
+                  {isCopied ? <Check size={13} /> : <Copy size={13} />}
+                  <span>{isCopied ? "Copied!" : "Copy"}</span>
+                </button>
+              </div>
+
+              {/* Summary */}
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs font-mono">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="font-sans text-[11px] font-bold text-slate-500">Combination:</span>
+                  <span className="font-bold text-slate-900">{qrModalTicket.betNo || qrModalTicket.CombiNo || 'N/A'} ({qrModalTicket.betCode || (qrModalTicket.rambolito ? 'RS3' : 'TS3')})</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="font-sans text-[11px] font-bold text-slate-500">Win Liability:</span>
+                  <span className="font-bold text-emerald-700 font-sans text-sm">₱{parseFloat(qrModalTicket.winAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="font-sans text-[11px] font-bold text-slate-500">Draw Schedule:</span>
+                  <span className="font-semibold text-slate-700">{formatDrawTime(qrModalTicket.drawTime || qrModalTicket.draw, qrModalTicket.drawDate)}</span>
+                </div>
+              </div>
+
+              {/* Scanner Notice */}
+              <div className="bg-blue-50 border border-blue-200 text-[#002B66] rounded-xl p-3 text-center text-[11px] font-semibold leading-relaxed w-full">
+                Point the <span className="font-black text-[#002B66] underline">STL Mandaue QR Scanner Mobile App</span> at this QR code to authenticate and execute payout.
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end">
+              <button 
+                onClick={() => setIsQrModalOpen(false)} 
+                className="w-full bg-[#002B66] hover:bg-blue-900 text-white font-extrabold py-2.5 rounded-lg text-xs uppercase tracking-wider cursor-pointer shadow-md transition-all active:scale-95"
+              >
+                Close QR Code
               </button>
             </div>
           </div>
