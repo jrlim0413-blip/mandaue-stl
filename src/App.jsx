@@ -93,6 +93,7 @@ export default function App() {
   const [qrModalTicket, setQrModalTicket] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
   const [copiedTransIds, setCopiedTransIds] = useState(() => new Set());
+  const [openedQrTransIds, setOpenedQrTransIds] = useState(() => new Set());
   const [isCapturingImage, setIsCapturingImage] = useState(null);
   const [copiedSupervisorKey, setCopiedSupervisorKey] = useState(null);
 
@@ -170,6 +171,10 @@ export default function App() {
     }
     if (!ticket) return;
     const computedId = ticket.computedTransId || ticket.transactionId || ticket.transId || ticket.receipt_no || ticket.ticket_no || 'N/A';
+    const strId = String(computedId).trim();
+    if (strId && strId !== 'N/A') {
+      setOpenedQrTransIds(prev => new Set(prev).add(strId));
+    }
     setQrModalTicket({ ...ticket, computedTransId: computedId });
     setIsCopied(false);
     setIsQrModalOpen(true);
@@ -849,6 +854,16 @@ export default function App() {
           copiedTransIds.has(String(selectedTicket.ticket_no || '').trim())
         );
 
+        const isQrOpened = Boolean(
+          openedQrTransIds.has(String(selectedTicket.computedTransId || '').trim()) ||
+          openedQrTransIds.has(String(selectedTicket.transactionId || '').trim()) ||
+          openedQrTransIds.has(String(selectedTicket.transId || '').trim()) ||
+          openedQrTransIds.has(String(selectedTicket.receipt_no || '').trim()) ||
+          openedQrTransIds.has(String(selectedTicket.ticket_no || '').trim())
+        );
+
+        const isTransferDisabled = isTransIdCopied || isQrOpened;
+
         return (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -868,10 +883,17 @@ export default function App() {
                   </p>
                 </div>
 
-                {isTransIdCopied && (
+                {isTransferDisabled && (
                   <div className="bg-amber-100/80 border-2 border-amber-400 text-amber-900 p-3 rounded-lg flex items-center gap-2.5 font-bold animate-in fade-in duration-200">
                     <CheckCircle2 size={18} className="text-emerald-700 shrink-0" />
-                    <span>Transaction ID copied to clipboard. <u>Execute Transfer is disabled</u> for this ticket.</span>
+                    <span>
+                      {isTransIdCopied && isQrOpened
+                        ? "Transaction ID copied & QR Code opened. "
+                        : isQrOpened
+                        ? "QR Code modal opened. "
+                        : "Transaction ID copied to clipboard. "}
+                      <u>Execute Transfer is disabled</u> for this ticket.
+                    </span>
                   </div>
                 )}
 
@@ -951,18 +973,28 @@ export default function App() {
                 </button>
                 <button 
                   onClick={handleConfirmReturn} 
-                  disabled={isSaving || isTransIdCopied} 
+                  disabled={isSaving || isTransferDisabled} 
                   className={`w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-lg font-black uppercase text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
-                    isTransIdCopied
+                    isTransferDisabled
                       ? "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300"
                       : isSaving
                       ? "bg-[#002B66] text-white opacity-50 cursor-wait"
                       : "bg-[#002B66] hover:bg-blue-900 text-white cursor-pointer active:scale-95"
                   }`}
-                  title={isTransIdCopied ? "Transfer is disabled because Transaction ID has been copied" : "Execute transfer to returned ledger"}
+                  title={
+                    isTransferDisabled 
+                      ? `Transfer is disabled because ${isQrOpened ? "QR Code modal was opened" : "Transaction ID was copied"}` 
+                      : "Execute transfer to returned ledger"
+                  }
                 >
-                  <Check size={14} className={isTransIdCopied ? "text-slate-400" : "text-[#FFD700]"} />
-                  <span>{isSaving ? "Processing Transfer..." : isTransIdCopied ? "Transfer Disabled (ID Copied)" : "Execute Transfer"}</span>
+                  <Check size={14} className={isTransferDisabled ? "text-slate-400" : "text-[#FFD700]"} />
+                  <span>
+                    {isSaving 
+                      ? "Processing Transfer..." 
+                      : isTransferDisabled 
+                      ? `Transfer Disabled (${isQrOpened ? "QR Opened" : "ID Copied"})` 
+                      : "Execute Transfer"}
+                  </span>
                 </button>
               </div>
             </div>
