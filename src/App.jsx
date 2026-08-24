@@ -91,6 +91,19 @@ export default function App() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrModalTicket, setQrModalTicket] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [copiedTransIds, setCopiedTransIds] = useState(() => new Set());
+
+  const handleCopyTransId = (id) => {
+    if (!id) return;
+    const strId = String(id).trim();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(strId);
+    }
+    setCopiedTransIds(prev => new Set(prev).add(strId));
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+    showToast(`Transaction ID ${strId} copied to clipboard.`);
+  };
 
   const handleOpenQrModal = (ticket, e) => {
     if (e) {
@@ -661,167 +674,230 @@ export default function App() {
       </div>
 
       {/* Confirmation Modal */}
-      {isModalOpen && selectedTicket && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-[#002B66] text-white px-4 sm:px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700] shrink-0">
-              <div className="flex items-center gap-2.5 font-black uppercase tracking-wider text-xs truncate">
-                <Receipt size={18} className="text-[#FFD700] shrink-0" />
-                <span className="truncate">Confirm Winnings Return Entry</span>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white cursor-pointer shrink-0"><X size={18} /></button>
-            </div>
-            
-            <div className="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto">
-              <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg flex items-start gap-2.5">
-                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                <p className="font-semibold leading-relaxed">
-                  Please review the ticket specifications below before transferring this record into the <span className="font-bold underline">Returned Winnings Audit Ledger</span>.
-                </p>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 sm:p-4 space-y-2.5 font-mono text-xs">
-                <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Assigned Username:</span>
-                  <span className="font-bold text-[#002B66] truncate">{selectedTicket.username ? `@${selectedTicket.username}` : 'N/A'}</span>
+      {isModalOpen && selectedTicket && (() => {
+        const isTransIdCopied = Boolean(
+          copiedTransIds.has(String(selectedTicket.computedTransId || '').trim()) ||
+          copiedTransIds.has(String(selectedTicket.transactionId || '').trim()) ||
+          copiedTransIds.has(String(selectedTicket.transId || '').trim()) ||
+          copiedTransIds.has(String(selectedTicket.receipt_no || '').trim()) ||
+          copiedTransIds.has(String(selectedTicket.ticket_no || '').trim())
+        );
+
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-white border-2 border-[#002B66] rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              <div className="bg-[#002B66] text-white px-4 sm:px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700] shrink-0">
+                <div className="flex items-center gap-2.5 font-black uppercase tracking-wider text-xs truncate">
+                  <Receipt size={18} className="text-[#FFD700] shrink-0" />
+                  <span className="truncate">Confirm Winnings Return Entry</span>
                 </div>
-                <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Full Name / Outlet:</span>
-                  <span className="font-bold text-slate-800 truncate">{selectedTicket.fullName || selectedTicket.outlet || 'N/A'}</span>
+                <button onClick={() => setIsModalOpen(false)} className="text-slate-300 hover:text-white cursor-pointer shrink-0"><X size={18} /></button>
+              </div>
+              
+              <div className="p-4 sm:p-5 space-y-4 text-xs overflow-y-auto">
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-lg flex items-start gap-2.5">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <p className="font-semibold leading-relaxed">
+                    Please review the ticket specifications below before transferring this record into the <span className="font-bold underline">Returned Winnings Audit Ledger</span>.
+                  </p>
                 </div>
-                <div 
-                  className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 cursor-pointer group hover:bg-blue-50/70 p-1 -mx-1 rounded transition-all gap-2"
-                  onClick={(e) => handleOpenQrModal(selectedTicket, e)}
-                  title="Click to view QR Code"
-                >
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase flex items-center gap-1.5 shrink-0">
-                    <QrCode size={13} className="text-[#002B66]" />
-                    <span>Transaction ID:</span>
-                  </span>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-bold text-[#002B66] underline decoration-blue-300 group-hover:text-blue-700 font-mono truncate">
-                      {selectedTicket.computedTransId}
+
+                {isTransIdCopied && (
+                  <div className="bg-amber-100/80 border-2 border-amber-400 text-amber-900 p-3 rounded-lg flex items-center gap-2.5 font-bold animate-in fade-in duration-200">
+                    <CheckCircle2 size={18} className="text-emerald-700 shrink-0" />
+                    <span>Transaction ID copied to clipboard. <u>Execute Transfer is disabled</u> for this ticket.</span>
+                  </div>
+                )}
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 sm:p-4 space-y-2.5 font-mono text-xs">
+                  <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Assigned Username:</span>
+                    <span className="font-bold text-[#002B66] truncate">{selectedTicket.username ? `@${selectedTicket.username}` : 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Full Name / Outlet:</span>
+                    <span className="font-bold text-slate-800 truncate">{selectedTicket.fullName || selectedTicket.outlet || 'N/A'}</span>
+                  </div>
+                  <div 
+                    className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 p-1 -mx-1 rounded transition-all gap-2"
+                  >
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase flex items-center gap-1.5 shrink-0">
+                      <QrCode size={13} className="text-[#002B66]" />
+                      <span>Transaction ID:</span>
                     </span>
-                    <span className="bg-[#002B66] text-[#FFD700] hover:bg-blue-900 text-[10px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs transition-transform active:scale-95 shrink-0">
-                      <QrCode size={11} />
-                      <span>QR</span>
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span 
+                        onClick={(e) => handleOpenQrModal(selectedTicket, e)}
+                        className="font-bold text-[#002B66] underline decoration-blue-300 hover:text-blue-700 font-mono truncate cursor-pointer"
+                        title="Click to view QR Code"
+                      >
+                        {selectedTicket.computedTransId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopyTransId(selectedTicket.computedTransId);
+                        }}
+                        className={`flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded shadow-2xs cursor-pointer transition-all active:scale-95 shrink-0 ${
+                          isTransIdCopied 
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
+                            : "bg-[#002B66] hover:bg-blue-900 text-[#FFD700]"
+                        }`}
+                        title="Copy Transaction ID"
+                      >
+                        {isTransIdCopied ? <Check size={11} /> : <Copy size={11} />}
+                        <span>{isTransIdCopied ? "Copied" : "Copy"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleOpenQrModal(selectedTicket, e)}
+                        className="bg-[#002B66] text-[#FFD700] hover:bg-blue-900 text-[10px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-2xs transition-transform active:scale-95 shrink-0 cursor-pointer"
+                        title="Open QR Code Modal"
+                      >
+                        <QrCode size={11} />
+                        <span>QR</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Draw Schedule:</span>
+                    <span className="font-bold text-slate-800 truncate">{formatDrawTime(selectedTicket.drawTime || selectedTicket.draw, selectedTicket.drawDate)}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Bet Combination:</span>
+                    <span className="font-bold text-slate-800 truncate">{selectedTicket.betNo || selectedTicket.CombiNo || 'N/A'} ({selectedTicket.betCode || (selectedTicket.rambolito ? 'RS3' : 'TS3')})</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Bet Amount:</span>
+                    <span className="font-bold text-slate-800 shrink-0">₱{parseFloat(selectedTicket.betAmount ?? selectedTicket.amount ?? 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pb-0.5 gap-2">
+                    <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Win Liability:</span>
+                    <span className="font-bold text-emerald-700 text-sm shrink-0">₱{parseFloat(selectedTicket.winAmount ?? 0).toFixed(2)}</span>
                   </div>
                 </div>
-                <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Draw Schedule:</span>
-                  <span className="font-bold text-slate-800 truncate">{formatDrawTime(selectedTicket.drawTime || selectedTicket.draw, selectedTicket.drawDate)}</span>
-                </div>
-                <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Bet Combination:</span>
-                  <span className="font-bold text-slate-800 truncate">{selectedTicket.betNo || selectedTicket.CombiNo || 'N/A'} ({selectedTicket.betCode || (selectedTicket.rambolito ? 'RS3' : 'TS3')})</span>
-                </div>
-                <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5 gap-2">
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Bet Amount:</span>
-                  <span className="font-bold text-slate-800 shrink-0">₱{parseFloat(selectedTicket.betAmount ?? selectedTicket.amount ?? 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between items-center pb-0.5 gap-2">
-                  <span className="text-slate-500 font-sans text-[11px] font-bold uppercase shrink-0">Win Liability:</span>
-                  <span className="font-bold text-emerald-700 text-sm shrink-0">₱{parseFloat(selectedTicket.winAmount ?? 0).toFixed(2)}</span>
-                </div>
               </div>
-            </div>
 
-            <div className="bg-slate-100 px-4 sm:px-5 py-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-end gap-2 shrink-0">
-              <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg border border-slate-300 font-extrabold text-slate-700 hover:bg-slate-200 cursor-pointer uppercase text-xs transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleConfirmReturn} disabled={isSaving} className="w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-lg bg-[#002B66] hover:bg-blue-900 text-white font-black cursor-pointer uppercase text-xs flex items-center justify-center gap-2 disabled:opacity-50 shadow-md transition-all active:scale-95">
-                <Check size={14} className="text-[#FFD700]" />
-                <span>{isSaving ? "Processing Transfer..." : "Execute Transfer"}</span>
-              </button>
+              <div className="bg-slate-100 px-4 sm:px-5 py-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row justify-end gap-2 shrink-0">
+                <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg border border-slate-300 font-extrabold text-slate-700 hover:bg-slate-200 cursor-pointer uppercase text-xs transition-colors">
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleConfirmReturn} 
+                  disabled={isSaving || isTransIdCopied} 
+                  className={`w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-lg font-black uppercase text-xs flex items-center justify-center gap-2 shadow-md transition-all ${
+                    isTransIdCopied
+                      ? "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-300"
+                      : isSaving
+                      ? "bg-[#002B66] text-white opacity-50 cursor-wait"
+                      : "bg-[#002B66] hover:bg-blue-900 text-white cursor-pointer active:scale-95"
+                  }`}
+                  title={isTransIdCopied ? "Transfer is disabled because Transaction ID has been copied" : "Execute transfer to returned ledger"}
+                >
+                  <Check size={14} className={isTransIdCopied ? "text-slate-400" : "text-[#FFD700]"} />
+                  <span>{isSaving ? "Processing Transfer..." : isTransIdCopied ? "Transfer Disabled (ID Copied)" : "Execute Transfer"}</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Dedicated Standalone Ticket QR Code Modal */}
-      {isQrModalOpen && qrModalTicket && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white border-2 border-[#002B66] rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
-              <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs">
-                <QrCode size={18} className="text-[#FFD700]" />
-                <span>Ticket QR Code</span>
-              </div>
-              <button 
-                onClick={() => setIsQrModalOpen(false)} 
-                className="text-slate-300 hover:text-white cursor-pointer p-1 rounded-md hover:bg-white/10 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
+      {isQrModalOpen && qrModalTicket && (() => {
+        const isQrTicketCopied = Boolean(
+          isCopied ||
+          copiedTransIds.has(String(qrModalTicket.computedTransId || '').trim()) ||
+          copiedTransIds.has(String(qrModalTicket.transactionId || '').trim())
+        );
 
-            {/* Body */}
-            <div className="p-6 flex flex-col items-center gap-4">
-              {/* QR Code Container */}
-              <div className="bg-white p-4 rounded-2xl shadow-lg border-2 border-slate-200 flex items-center justify-center">
-                <QRCodeSVG 
-                  value={String(qrModalTicket.computedTransId || qrModalTicket.transactionId || '')} 
-                  size={190} 
-                  level="H" 
-                  includeMargin={true}
-                />
-              </div>
-
-              {/* Transaction ID with Copy */}
-              <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Transaction ID</p>
-                  <p className="font-mono text-xs md:text-sm font-black text-[#002B66]">{qrModalTicket.computedTransId || qrModalTicket.transactionId}</p>
+        return (
+          <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white border-2 border-[#002B66] rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden animate-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="bg-[#002B66] text-white px-5 py-3.5 flex justify-between items-center border-b-2 border-[#FFD700]">
+                <div className="flex items-center gap-2 font-black uppercase tracking-wider text-xs">
+                  <QrCode size={18} className="text-[#FFD700]" />
+                  <span>Ticket QR Code</span>
                 </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(qrModalTicket.computedTransId || qrModalTicket.transactionId);
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                  }}
-                  className="flex items-center gap-1 bg-[#002B66] hover:bg-blue-900 text-[#FFD700] text-xs font-black px-3 py-1.5 rounded-lg shadow-xs cursor-pointer transition-all active:scale-95"
+                <button 
+                  onClick={() => setIsQrModalOpen(false)} 
+                  className="text-slate-300 hover:text-white cursor-pointer p-1 rounded-md hover:bg-white/10 transition-colors"
                 >
-                  {isCopied ? <Check size={13} /> : <Copy size={13} />}
-                  <span>{isCopied ? "Copied!" : "Copy"}</span>
+                  <X size={18} />
                 </button>
               </div>
 
-              {/* Summary */}
-              <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs font-mono">
-                <div className="flex justify-between items-center text-slate-600">
-                  <span className="font-sans text-[11px] font-bold text-slate-500">Combination:</span>
-                  <span className="font-bold text-slate-900">{qrModalTicket.betNo || qrModalTicket.CombiNo || 'N/A'} ({qrModalTicket.betCode || (qrModalTicket.rambolito ? 'RS3' : 'TS3')})</span>
+              {/* Body */}
+              <div className="p-6 flex flex-col items-center gap-4">
+                {/* QR Code Container */}
+                <div className="bg-white p-4 rounded-2xl shadow-lg border-2 border-slate-200 flex items-center justify-center">
+                  <QRCodeSVG 
+                    value={String(qrModalTicket.computedTransId || qrModalTicket.transactionId || '')} 
+                    size={190} 
+                    level="H" 
+                    includeMargin={true}
+                  />
                 </div>
-                <div className="flex justify-between items-center text-slate-600">
-                  <span className="font-sans text-[11px] font-bold text-slate-500">Win Liability:</span>
-                  <span className="font-bold text-emerald-700 font-sans text-sm">₱{parseFloat(qrModalTicket.winAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+
+                {/* Transaction ID with Copy */}
+                <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wider">Transaction ID</p>
+                    <p className="font-mono text-xs md:text-sm font-black text-[#002B66]">{qrModalTicket.computedTransId || qrModalTicket.transactionId}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const id = qrModalTicket.computedTransId || qrModalTicket.transactionId;
+                      handleCopyTransId(id);
+                    }}
+                    className={`flex items-center gap-1 text-xs font-black px-3 py-1.5 rounded-lg shadow-xs cursor-pointer transition-all active:scale-95 ${
+                      isQrTicketCopied
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "bg-[#002B66] hover:bg-blue-900 text-[#FFD700]"
+                    }`}
+                  >
+                    {isQrTicketCopied ? <Check size={13} /> : <Copy size={13} />}
+                    <span>{isQrTicketCopied ? "Copied!" : "Copy"}</span>
+                  </button>
                 </div>
-                <div className="flex justify-between items-center text-slate-600">
-                  <span className="font-sans text-[11px] font-bold text-slate-500">Draw Schedule:</span>
-                  <span className="font-semibold text-slate-700">{formatDrawTime(qrModalTicket.drawTime || qrModalTicket.draw, qrModalTicket.drawDate)}</span>
+
+                {/* Summary */}
+                <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-xs font-mono">
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span className="font-sans text-[11px] font-bold text-slate-500">Combination:</span>
+                    <span className="font-bold text-slate-900">{qrModalTicket.betNo || qrModalTicket.CombiNo || 'N/A'} ({qrModalTicket.betCode || (qrModalTicket.rambolito ? 'RS3' : 'TS3')})</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span className="font-sans text-[11px] font-bold text-slate-500">Win Liability:</span>
+                    <span className="font-bold text-emerald-700 font-sans text-sm">₱{parseFloat(qrModalTicket.winAmount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-slate-600">
+                    <span className="font-sans text-[11px] font-bold text-slate-500">Draw Schedule:</span>
+                    <span className="font-semibold text-slate-700">{formatDrawTime(qrModalTicket.drawTime || qrModalTicket.draw, qrModalTicket.drawDate)}</span>
+                  </div>
+                </div>
+
+                {/* Scanner Notice */}
+                <div className="bg-blue-50 border border-blue-200 text-[#002B66] rounded-xl p-3 text-center text-[11px] font-semibold leading-relaxed w-full">
+                  Point the <span className="font-black text-[#002B66] underline">STL Mandaue QR Scanner Mobile App</span> at this QR code to authenticate and execute payout.
                 </div>
               </div>
 
-              {/* Scanner Notice */}
-              <div className="bg-blue-50 border border-blue-200 text-[#002B66] rounded-xl p-3 text-center text-[11px] font-semibold leading-relaxed w-full">
-                Point the <span className="font-black text-[#002B66] underline">STL Mandaue QR Scanner Mobile App</span> at this QR code to authenticate and execute payout.
+              {/* Footer */}
+              <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end">
+                <button 
+                  onClick={() => setIsQrModalOpen(false)} 
+                  className="w-full bg-[#002B66] hover:bg-blue-900 text-white font-extrabold py-2.5 rounded-lg text-xs uppercase tracking-wider cursor-pointer shadow-md transition-all active:scale-95"
+                >
+                  Close QR Code
+                </button>
               </div>
-            </div>
-
-            {/* Footer */}
-            <div className="bg-slate-100 px-5 py-3 border-t border-slate-200 flex justify-end">
-              <button 
-                onClick={() => setIsQrModalOpen(false)} 
-                className="w-full bg-[#002B66] hover:bg-blue-900 text-white font-extrabold py-2.5 rounded-lg text-xs uppercase tracking-wider cursor-pointer shadow-md transition-all active:scale-95"
-              >
-                Close QR Code
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
