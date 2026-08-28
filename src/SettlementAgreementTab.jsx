@@ -1,31 +1,60 @@
-import { useState } from 'react';
-import { FileText, Save, Printer, ListOrdered, PlusCircle, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { FileText, Save, Printer, ListOrdered, PlusCircle, Calendar, ChevronLeft, ChevronRight, CreditCard, X, ChevronDown, ChevronUp } from 'lucide-react';
+import {openSettlementAgreementPrint} from './utils/settlementAgreementPrint';
+import { supabase } from './supabaseClient';
+
+const getDueDate = (agreementDate, intervalDays, installmentNumber) => {
+  const dueDate = new Date(`${agreementDate}T00:00:00`);
+  if (Number.isNaN(dueDate.getTime())) return '';
+
+  dueDate.setDate(dueDate.getDate() + intervalDays * installmentNumber);
+  const year = dueDate.getFullYear();
+  const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+  const day = String(dueDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const createInstallmentRows = (count, winAmount, agreementDate, frequency, existingRows = []) => {
+  const defaultAmount = (winAmount / count).toFixed(2);
+  const intervalDays = frequency === 'daily' ? 1 : 7;
+
+  return Array.from({ length: count }, (_, index) => ({
+    id: index + 1,
+    dueDate: getDueDate(agreementDate, intervalDays, index + 1) || existingRows[index]?.dueDate || '',
+    amountDue: existingRows[index]?.amountDue || defaultAmount,
+    status: existingRows[index]?.status || 'Pending'
+  }));
+};
 
 export default function SettlementAgreementTab({ filteredData = [], onSaveAgreement }) {
   // Main Tab State para sa Sub-navigation ('create' o 'list')
   const [activeSubTab, setActiveSubTab] = useState('create');
+  const [currentStep, setCurrentStep] = useState(1);
 
-  // State para sa expanded rows sa list view (para makita ang installment breakdown)
-  const [expandedId, setExpandedId] = useState(null);
+  const [paymentsByAgreement, setPaymentsByAgreement] = useState({});
+  const [expandedAgreementId, setExpandedAgreementId] = useState(null);
+  const [paymentModalItem, setPaymentModalItem] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [receivedBy, setReceivedBy] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   // States para sa Editable Form
   const [selectedTicketId, setSelectedTicketId] = useState('');
   const [agreementDate, setAgreementDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('Wala na scan ang cesibo, paso na at hindi na makita.');
-  const [installmentsCount, setInstallmentsCount] = useState(10);
+  const [installmentsCount, setInstallmentsCount] = useState(15);
+  const [frequency, setFrequency] = useState('weekly');
 
   // States para sa Editable Signatories
   const [hrManagerName, setHrManagerName] = useState('Authorized HR / Management');
   const [supervisorName, setSupervisorName] = useState('Sales Supervisor');
   
-  // Custom installment schedule rows (array of objects)
-  const [installments, setInstallments] = useState(
-    Array.from({ length: 10 }, (_, i) => ({
-      id: i + 1,
-      dueDate: '',
-      amountDue: '500.00',
-      status: 'Pending'
-    }))
+  const [installments, setInstallments] = useState(() =>
+    createInstallmentRows(15, parseFloat(filteredData[0]?.winAmount || 5000), agreementDate, 'weekly')
   );
 
   // Hanapin ang napiling ticket mula sa filteredData (galing sa returned winnings)
@@ -40,6 +69,9 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
     username: 'sample_user',
     fullName: 'Sample Claimant'
   };
+
+  const getSelectedTicketId = (ticket) => ticket?.transactionId || ticket?.transId || ticket?.receipt_no || '';
+  const getWinAmount = (ticket) => parseFloat(ticket?.winAmount || 5000);
 
   // Helper function para gawing pormal at madaling basahin ang petsa
   const formatTransactionDate = (dateString) => {
@@ -59,19 +91,28 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
 
   // Handler kapag binago ang total number of installments
   const handleInstallmentCountChange = (count) => {
-    const num = parseInt(count) || 1;
-    setInstallmentsCount(num);
-    const winAmt = parseFloat(selectedTicket.winAmount || 5000);
-    const defaultAmount = (winAmt / num).toFixed(2);
-    
-    setInstallments(
-      Array.from({ length: num }, (_, i) => ({
-        id: i + 1,
-        dueDate: '',
-        amountDue: defaultAmount,
-        status: 'Pending'
-      }))
-    );
+    const nextCount = parseInt(count, 10) || 15;
+    setInstallmentsCount(nextCount);
+    setInstallments(createInstallmentRows(nextCount, getWinAmount(selectedTicket), agreementDate, frequency));
+  };
+
+  const handleFrequencyChange = (nextFrequency) => {
+    setFrequency(nextFrequency);
+    setInstallments(createInstallmentRows(installmentsCount, getWinAmount(selectedTicket), agreementDate, nextFrequency, installments));
+  };
+
+  const handleAgreementDateChange = (nextAgreementDate) => {
+    setAgreementDate(nextAgreementDate);
+    setInstallments(createInstallmentRows(installmentsCount, getWinAmount(selectedTicket), nextAgreementDate, frequency, installments));
+  };
+
+  const handleTicketChange = (ticketId) => {
+    const nextTicket = filteredData.find((item) => getSelectedTicketId(item) === ticketId) || selectedTicket;
+    setSelectedTicketId(ticketId);
+    setInstallments(createInstallmentRows(installmentsCount, getWinAmount(nextTicket), agreementDate, frequency, installments.map((row) => ({
+      ...row,
+      amountDue: ''
+    }))));
   };
 
   // Handler para sa pag-update ng partikular na installment row
@@ -94,7 +135,7 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
         installmentsCount,
         installments,
         signatories: {
-          claimant: selectedTicket.fullName || selectedTicket.username || 'Claimant',
+          claimant: selectedTicket.fullName || selectedTicket.username || 'Accountable Payer',
           hrManager: hrManagerName,
           supervisor: supervisorName
         },
@@ -109,7 +150,7 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
   };
 
   const handlePrint = () => {
-    window.print();
+    openSettlementAgreementPrint();
   };
 
   // Helper para ma-parse ang settlementTerms kung JSON string galing sa database
@@ -123,10 +164,146 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
   };
 
   // Kuhanin ang listahan ng mga nakasave na naka-settle galing sa filteredData (mga may isUnderSettlement === true)
-  const savedAgreementsList = filteredData.filter(item => item.isUnderSettlement === true || item.settlementTerms);
+  const isSettlementRecord = (item) => {
+    const status = String(item.isUnderSettlement ?? '').toLowerCase();
+    return item.isUnderSettlement === true || status === 'true' || status === '1' || Boolean(item.settlementTerms || item.settlement_terms);
+  };
+
+  const savedAgreementsList = filteredData.filter(isSettlementRecord);
+  const displayedAgreementIds = savedAgreementsList.map((item) => item.id).filter(Boolean);
+  const displayedAgreementIdsKey = displayedAgreementIds.join(',');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchPayments = async () => {
+      const agreementIds = displayedAgreementIdsKey ? displayedAgreementIdsKey.split(',') : [];
+      if (!agreementIds.length) {
+        setPaymentsByAgreement({});
+        return;
+      }
+
+      setIsLoadingPayments(true);
+      setPaymentError('');
+      const { data, error } = await supabase
+        .from('settlement_payments')
+        .select('*')
+        .in('returnedWinningsId', agreementIds)
+        .order('paymentDate', { ascending: false });
+
+      if (!isMounted) return;
+      if (error) {
+        setPaymentError(`Unable to load payment history: ${error.message}`);
+        setIsLoadingPayments(false);
+        return;
+      }
+
+      setPaymentsByAgreement((data || []).reduce((payments, payment) => {
+        const agreementPayments = payments[payment.returnedWinningsId] || [];
+        payments[payment.returnedWinningsId] = [...agreementPayments, payment];
+        return payments;
+      }, {}));
+      setIsLoadingPayments(false);
+    };
+
+    fetchPayments();
+    return () => { isMounted = false; };
+  }, [displayedAgreementIdsKey]);
+
+  const getPaymentSummary = (item) => {
+    const payments = paymentsByAgreement[item.id] || [];
+    const paidAmount = payments.reduce((sum, payment) => sum + parseFloat(payment.paymentAmount || 0), 0);
+    const totalAmount = parseFloat(item.totalInstallmentAmount || item.winAmount || 0);
+    const status = paidAmount >= totalAmount && totalAmount > 0
+      ? 'FULLY PAID'
+      : paidAmount > 0
+        ? 'PARTIAL'
+        : item.settlementStatus || 'PENDING';
+    return { payments, paidAmount, remainingAmount: Math.max(totalAmount - paidAmount, 0), totalAmount, status };
+  };
+
+  const openPaymentForm = (item) => {
+    setPaymentModalItem(item);
+    setPaymentAmount('');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setReceivedBy('');
+    setPaymentNotes('');
+    setPaymentError(item.id ? '' : 'This agreement has no database ID, so a payment cannot be recorded.');
+  };
+
+  const handlePaymentSave = async (event) => {
+    event.preventDefault();
+    if (isSavingPayment) return;
+    if (!paymentModalItem?.id) {
+      setPaymentError('This agreement has no database ID, so a payment cannot be recorded.');
+      return;
+    }
+
+    const amount = parseFloat(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentError('Enter a payment amount greater than zero.');
+      return;
+    }
+    if (!paymentDate) {
+      setPaymentError('Select a payment date.');
+      return;
+    }
+
+    setIsSavingPayment(true);
+    setPaymentError('');
+    const { error } = await supabase.from('settlement_payments').insert([{
+      returnedWinningsId: paymentModalItem.id,
+      paymentAmount: amount.toFixed(2),
+      paymentDate: `${paymentDate}T00:00:00.000Z`,
+      receivedBy: receivedBy.trim() || null,
+      notes: paymentNotes.trim() || null
+    }]);
+
+    if (error) {
+      setPaymentError(`Unable to save payment: ${error.message}`);
+      setIsSavingPayment(false);
+      return;
+    }
+
+    const { paidAmount, totalAmount } = getPaymentSummary(paymentModalItem);
+    const updatedPaidAmount = paidAmount + amount;
+    const settlementStatus = updatedPaidAmount >= totalAmount && totalAmount > 0 ? 'FULLY PAID' : 'PARTIAL';
+    const { error: statusError } = await supabase
+      .from('returned_winnings')
+      .update({ settlementStatus })
+      .eq('id', paymentModalItem.id);
+
+    if (statusError) {
+      setPaymentError(`Payment saved, but agreement status could not be updated: ${statusError.message}`);
+      setIsSavingPayment(false);
+      return;
+    }
+
+    const { data: refreshedPayments, error: refreshError } = await supabase
+      .from('settlement_payments')
+      .select('*')
+      .eq('returnedWinningsId', paymentModalItem.id)
+      .order('paymentDate', { ascending: false });
+    if (refreshError) {
+      setPaymentError(`Payment saved, but payment history could not be refreshed: ${refreshError.message}`);
+      setIsSavingPayment(false);
+      return;
+    }
+
+    setPaymentsByAgreement((current) => ({ ...current, [paymentModalItem.id]: refreshedPayments || [] }));
+    setPaymentModalItem(null);
+    setIsSavingPayment(false);
+  };
+
+  const steps = [
+    { number: 1, label: 'Select Ticket' },
+    { number: 2, label: 'Agreement Details' },
+    { number: 3, label: 'Payment Schedule' },
+    { number: 4, label: 'Review & Actions' }
+  ];
 
   return (
-    <div className="space-y-6 w-full max-w-5xl mx-auto pb-12">
+    <div className="space-y-6 w-full max-w-5xl mx-auto pb-12 print:max-w-none print:pb-0 print:space-y-0">
       
       {/* SUB-TABS NAVIGATION (Hidden when printing) */}
       <div className="print:hidden flex items-center gap-2 border-b border-slate-200 pb-3">
@@ -174,6 +351,9 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
                 <p className="text-[11px] text-slate-500 font-semibold">List of recorded settlement agreements retrieved from database table.</p>
               </div>
             </div>
+            {paymentError && !paymentModalItem && (
+              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{paymentError}</p>
+            )}
           </div>
 
           {savedAgreementsList.length === 0 ? (
@@ -189,27 +369,32 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
           ) : (
             <div className="grid grid-cols-1 gap-4">
               {savedAgreementsList.map((item, index) => {
-                const parsedTerms = parseSettlementTerms(item.settlementTerms);
-                const isExpanded = expandedId === (item.id || index);
+                const parsedTerms = parseSettlementTerms(item.settlementTerms || item.settlement_terms);
+                const { payments, paidAmount, remainingAmount, status } = getPaymentSummary(item);
+                const agreementKey = item.id || item.transactionId || index;
+                const isExpanded = expandedAgreementId === agreementKey;
 
                 return (
-                  <div key={item.id || index} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 hover:border-slate-300 transition-all">
+                  <div key={agreementKey} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:border-slate-300 transition-all">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
                         <span className="bg-blue-50 text-[#002B66] border border-blue-200 font-mono font-bold px-2.5 py-1 rounded-lg text-xs">
                           {item.transactionId}
                         </span>
                         <span className="text-xs font-bold text-slate-700">
-                          Claimant: <span className="text-slate-900">{item.fullName || item.username || 'N/A'}</span>
+                          Accountable Payer: <span className="text-slate-900">{item.fullName || item.username || 'N/A'}</span>
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase">
-                          {item.settlementStatus || 'PENDING'}
+                        <span className={`${status === 'FULLY PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'} border px-2.5 py-1 rounded-lg text-[10px] font-black uppercase`}>
+                          {status}
                         </span>
                         <span className="text-xs font-mono font-bold text-slate-500 flex items-center gap-1">
                           <Calendar size={12} /> {formatTransactionDate(item.updated_at || item.created_at)}
                         </span>
+                        <button type="button" onClick={() => setExpandedAgreementId(isExpanded ? null : agreementKey)} className="flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wide text-[#002B66] hover:bg-blue-100 cursor-pointer">
+                          {isExpanded ? 'Hide Details' : 'View Details'} {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </button>
                       </div>
                     </div>
 
@@ -226,105 +411,143 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
                           ₱{parseFloat(item.totalInstallmentAmount || item.winAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </p>
                       </div>
-                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] font-black text-slate-400 uppercase block">Installments Breakdown</span>
-                          <p className="font-medium text-slate-700">
-                            {parsedTerms?.installments?.length || 0} Terms Scheduled
-                          </p>
-                        </div>
-                        {parsedTerms?.installments?.length > 0 && (
-                          <button
-                            onClick={() => setExpandedId(isExpanded ? null : (item.id || index))}
-                            className="text-xs font-bold text-[#002B66] bg-blue-50 hover:bg-blue-100 p-2 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
-                          >
-                            <span>{isExpanded ? 'Hide' : 'View'}</span>
-                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                          </button>
-                        )}
+                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase block">Payment Terms</span>
+                        <p className="font-medium text-slate-700">{parsedTerms?.installments?.length || 0} Terms Scheduled</p>
                       </div>
                     </div>
 
-                    {/* Collapsible Installments Schedule Table */}
-                    {isExpanded && parsedTerms?.installments && (
-                      <div className="mt-4 pt-4 border-t border-slate-100 space-y-2 animate-fadeIn">
-                        <h4 className="text-[11px] font-black text-[#002B66] uppercase tracking-wider">Installment Schedule Details</h4>
+                    {isExpanded && <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-y border-slate-100 py-3 text-xs">
+                      <div>
+                        <span className="block text-[10px] font-black text-slate-400 uppercase">Paid to Date</span>
+                        <span className="font-mono font-bold text-emerald-700">PHP {paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] font-black text-slate-400 uppercase">Remaining Balance</span>
+                        <span className="font-mono font-bold text-[#002B66]">PHP {remainingAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      </div>
+                      <div className="flex items-end justify-start sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => openPaymentForm(item)}
+                          className="flex items-center gap-1.5 rounded-lg bg-[#002B66] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#FFD700] shadow-sm transition-all hover:bg-blue-900 cursor-pointer"
+                        >
+                          <CreditCard size={14} /> Update Payment
+                        </button>
+                      </div>
+                    </div>}
+
+                    {isExpanded && <div className="space-y-2">
+                      <h4 className="text-[11px] font-black text-[#002B66] uppercase tracking-wider">Payment History</h4>
+                      {isLoadingPayments ? (
+                        <p className="text-xs text-slate-500">Loading payment history...</p>
+                      ) : payments.length === 0 ? (
+                        <p className="text-xs text-slate-500">No payments recorded.</p>
+                      ) : (
                         <div className="overflow-x-auto">
-                          <table className="w-full text-xs border-collapse border border-slate-200 text-center">
-                            <thead>
-                              <tr className="bg-slate-100 text-slate-700 font-bold text-[10px]">
-                                <th className="border border-slate-200 p-1.5">#</th>
-                                <th className="border border-slate-200 p-1.5">Due Date</th>
-                                <th className="border border-slate-200 p-1.5">Amount Due</th>
-                                <th className="border border-slate-200 p-1.5">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {parsedTerms.installments.map((inst, i) => (
-                                <tr key={i} className="hover:bg-slate-50">
-                                  <td className="border border-slate-200 p-1.5 font-mono font-bold">{inst.id}</td>
-                                  <td className="border border-slate-200 p-1.5 font-mono">{inst.dueDate || 'Not set'}</td>
-                                  <td className="border border-slate-200 p-1.5 font-mono font-bold text-emerald-700">₱{parseFloat(inst.amountDue || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                  <td className="border border-slate-200 p-1.5 text-[10px] font-bold text-slate-600">{inst.status || 'Pending'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
+                          <table className="w-full text-xs border-collapse border border-slate-200">
+                            <thead><tr className="bg-slate-100 text-left text-[10px] font-bold text-slate-700"><th className="border border-slate-200 p-1.5">Date</th><th className="border border-slate-200 p-1.5">Amount</th><th className="border border-slate-200 p-1.5">Received By</th><th className="border border-slate-200 p-1.5">Notes</th></tr></thead>
+                            <tbody>{payments.map((payment) => <tr key={payment.id} className="hover:bg-slate-50"><td className="border border-slate-200 p-1.5 font-mono">{formatTransactionDate(payment.paymentDate)}</td><td className="border border-slate-200 p-1.5 font-mono font-bold text-emerald-700">PHP {parseFloat(payment.paymentAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td><td className="border border-slate-200 p-1.5">{payment.receivedBy || 'N/A'}</td><td className="border border-slate-200 p-1.5">{payment.notes || 'N/A'}</td></tr>)}</tbody>
                           </table>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>}
+
                   </div>
                 );
               })}
             </div>
           )}
+
+          {paymentModalItem && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 print:hidden" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title">
+              <form onSubmit={handlePaymentSave} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div><h3 id="payment-modal-title" className="text-sm font-black uppercase tracking-wider text-[#002B66]">Update Payment</h3><p className="text-xs text-slate-500">{paymentModalItem.transactionId || 'Selected agreement'}</p></div>
+                  <button type="button" onClick={() => setPaymentModalItem(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 cursor-pointer" aria-label="Close payment form"><X size={18} /></button>
+                </div>
+                {paymentError && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">{paymentError}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <label className="space-y-1 font-bold text-slate-700">Payment Amount<input type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono outline-none focus:border-[#002B66]" required /></label>
+                  <label className="space-y-1 font-bold text-slate-700">Payment Date<input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono outline-none focus:border-[#002B66]" required /></label>
+                  <label className="space-y-1 font-bold text-slate-700 sm:col-span-2">Received By<input type="text" value={receivedBy} onChange={(event) => setReceivedBy(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-[#002B66]" /></label>
+                  <label className="space-y-1 font-bold text-slate-700 sm:col-span-2">Notes<textarea rows={3} value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-[#002B66]" /></label>
+                </div>
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-3"><button type="button" onClick={() => setPaymentModalItem(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button><button type="submit" disabled={isSavingPayment} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black uppercase tracking-wider text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">{isSavingPayment ? 'Saving...' : 'Save Payment'}</button></div>
+              </form>
+            </div>
+          )}
         </div>
       ) : (
-        /* CREATE AGREEMENT VIEW (ORIGINAL FORM) */
+        /* CREATE AGREEMENT VIEW */
         <>
+          <div className="print:hidden bg-[#002B66] rounded-xl shadow-lg p-4 sm:p-5 text-white">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-200">Settlement Processing Workflow</p>
+                <h3 className="text-sm font-black uppercase tracking-wider">Agreement Preparation</h3>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#FFD700]">Step {currentStep} of {steps.length}</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {steps.map((step) => (
+                <button
+                  key={step.number}
+                  type="button"
+                  onClick={() => setCurrentStep(step.number)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-left text-[10px] font-black uppercase tracking-wide transition-all cursor-pointer ${
+                    currentStep === step.number ? 'bg-[#FFD700] text-[#002B66] shadow-md' : 'bg-white/10 text-blue-100 hover:bg-white/20'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0">{step.number}</span>
+                  <span>{step.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Control Panel (Hidden when printing) */}
-          <div className="print:hidden bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center justify-between">
+          <div className="print:hidden bg-white p-4 sm:p-5 rounded-xl border border-blue-100 shadow-md ring-1 ring-blue-100/60 flex flex-wrap gap-4 items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="bg-[#002B66] text-[#FFD700] p-2 rounded-lg">
+              <div className="bg-blue-50 text-[#002B66] p-2.5 rounded-lg border border-blue-100">
                 <FileText size={20} />
               </div>
               <div>
                 <h3 className="text-xs font-black text-[#002B66] uppercase tracking-wider">Settlement Agreement Generator</h3>
-                <p className="text-[11px] text-slate-500 font-semibold">Customize and edit agreement terms before printing or saving.</p>
+                <p className="text-[11px] text-slate-500 font-semibold">Complete each section in order before saving or printing.</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSave}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <Save size={14} />
-                <span>Save Agreement</span>
-              </button>
-              <button
-                onClick={handlePrint}
-                className="flex items-center gap-1.5 bg-[#002B66] hover:bg-blue-900 text-[#FFD700] px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer active:scale-95"
-              >
-                <Printer size={14} />
-                <span>Print Form</span>
-              </button>
-            </div>
+            {currentStep === 4 && (
+              <div className="flex items-center gap-2">
+                <button onClick={handleSave} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer active:scale-95">
+                  <Save size={14} />
+                  <span>Save Agreement</span>
+                </button>
+                <button onClick={handlePrint} className="flex items-center gap-1.5 bg-[#002B66] hover:bg-blue-900 text-[#FFD700] px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider shadow-sm transition-all cursor-pointer active:scale-95">
+                  <Printer size={14} />
+                  <span>Print Form</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Selector para sa Ticket mula sa Returned Winnings */}
-          <div className="print:hidden bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center justify-between text-xs">
-            <span className="font-bold text-[#002B66]">Select Returned/Unclaimed Ticket to Process:</span>
+          <div className={`${currentStep === 1 ? '' : 'hidden'} print:hidden bg-blue-50 border border-blue-200 p-4 rounded-xl shadow-sm flex flex-col md:flex-row gap-3 md:items-center justify-between text-xs`}>
+            <div>
+              <span className="block font-black uppercase tracking-wider text-[#002B66]">1. Select Ticket</span>
+              <span className="text-[11px] text-slate-500">Choose the returned winning record for this agreement.</span>
+            </div>
             <select
               value={selectedTicketId || (filteredData[0]?.transactionId || filteredData[0]?.transId || '')}
-              onChange={(e) => setSelectedTicketId(e.target.value)}
-              className="bg-white border border-slate-300 px-3 py-1.5 rounded-lg font-mono font-bold text-slate-800 outline-none"
+              onChange={(e) => handleTicketChange(e.target.value)}
+              className="w-full md:w-auto bg-white border border-blue-200 px-3 py-2 rounded-lg font-mono font-bold text-slate-800 outline-none focus:border-[#002B66] focus:ring-2 focus:ring-blue-200"
             >
               {filteredData.length > 0 ? (
                 filteredData.map((item, idx) => {
                   const tid = item.transactionId || item.transId || item.receipt_no || `TID-${idx}`;
                   return (
                     <option key={idx} value={tid}>
-                      {tid} - {item.fullName || item.outlet || item.username || 'Claimant'} (₱{parseFloat(item.winAmount || 0).toLocaleString()})
+                      {tid} - {item.fullName || item.outlet || item.username || 'Accountable Payer'} (₱{parseFloat(item.winAmount || 0).toLocaleString()})
                     </option>
                   );
                 })
@@ -334,11 +557,18 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
             </select>
           </div>
 
+          <div className={`${currentStep === 4 ? '' : 'hidden'} print:hidden bg-white border border-slate-200 rounded-xl shadow-sm p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs`}>
+            <div><span className="block text-[10px] font-black uppercase text-slate-400">Ticket</span><strong className="font-mono text-[#002B66]">{selectedTicket.transactionId || selectedTicket.transId || selectedTicket.receipt_no}</strong></div>
+            <div><span className="block text-[10px] font-black uppercase text-slate-400">Accountable Payer</span><strong>{selectedTicket.fullName || selectedTicket.username || 'Accountable Payer'}</strong></div>
+            <div><span className="block text-[10px] font-black uppercase text-slate-400">Schedule</span><strong>{installmentsCount} installments</strong></div>
+            <div><span className="block text-[10px] font-black uppercase text-slate-400">Total</span><strong className="text-emerald-700">PHP {installments.reduce((sum, item) => sum + parseFloat(item.amountDue || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></div>
+          </div>
+
           {/* PRINTABLE DOCUMENT CONTAINER */}
-          <div className="bg-white border border-slate-300 rounded-xl shadow-md p-8 space-y-6 text-slate-900 font-sans print:border-none print:shadow-none print:p-0">
+          <div id="settlement-agreement-print-area" className={`${currentStep === 4 ? 'bg-white border border-slate-300 rounded-xl shadow-md p-8' : 'bg-transparent border-0 shadow-none p-0'} space-y-6 text-slate-900 font-sans print:w-full print:max-w-none print:rounded-none print:border-none print:shadow-none print:p-0`}>
             
             {/* HEADER WITH LOGOS */}
-            <div className="flex justify-between items-center border-b-2 border-[#002B66] pb-4">
+            <div className={`${currentStep === 4 ? '' : 'hidden'} flex justify-between items-center border-b-2 border-[#002B66] pb-4`}>
               <div className="flex items-center gap-3">
                 <img 
                   src="/lbp.png" 
@@ -359,26 +589,26 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
               </div>
             </div>
 
-            <div className="text-center space-y-1">
+            <div className={`${currentStep === 4 ? '' : 'hidden'} text-center space-y-1`}>
               <h2 className="text-sm font-black text-[#002B66] tracking-wider uppercase">SETTLEMENT AGREEMENT</h2>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">UNCLAIMED WINNING & PAYMENT SCHEDULE</p>
             </div>
 
-            <p className="text-xs text-slate-700 leading-relaxed">
-              This Settlement Agreement ("Agreement") is made on{' '}
+            <p className={`${currentStep === 2 || currentStep === 4 ? '' : 'hidden'} print:block text-xs text-slate-700 leading-relaxed`}>
+                This Settlement Agreement ("Agreement") is made on{' '}
               <input
                 type="date"
                 value={agreementDate}
-                onChange={(e) => setAgreementDate(e.target.value)}
+                onChange={(e) => handleAgreementDateChange(e.target.value)}
                 className="border-b border-slate-400 px-1 font-bold text-slate-900 bg-slate-50 outline-none text-xs"
               />{' '}
-              regarding the settlement of an unclaimed winning ticket described below.
+              regarding the agent's repayment of company funds described below.
             </p>
 
             {/* 1. DETAILS OF UNCLAIMED WINNING */}
-            <div className="space-y-2">
+            <div className={`${currentStep === 1 || currentStep === 4 ? '' : 'hidden'} print:block space-y-2`}>
               <h3 className="text-xs font-black text-[#002B66] uppercase border-l-4 border-[#002B66] pl-2">
-                1. DETAILS OF UNCLAIMED WINNING
+                1. DETAILS OF ACCOUNTABILITY
               </h3>
               <table className="w-full text-xs border-collapse border border-slate-300">
                 <tbody>
@@ -411,9 +641,9 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
             </div>
 
             {/* 2. SUMMARY / REASON OF CLAIM (EDITABLE) */}
-            <div className="space-y-2">
+            <div className={`${currentStep === 2 || currentStep === 4 ? '' : 'hidden'} print:block space-y-2`}>
               <h3 className="text-xs font-black text-[#002B66] uppercase border-l-4 border-[#002B66] pl-2">
-                2. SUMMARY / REASON OF CLAIM
+                2. SUMMARY / REASON FOR SETTLEMENT
               </h3>
               <div className="bg-amber-50 border border-amber-300 p-3 rounded text-xs space-y-1">
                 <span className="font-black text-amber-900 uppercase">Reason:</span>
@@ -431,21 +661,31 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
             </div>
 
             {/* 3. PAYMENT SCHEDULE & BREAKDOWN (EDITABLE) */}
-            <div className="space-y-2">
+            <div className={`${currentStep === 3 || currentStep === 4 ? '' : 'hidden'} print:block space-y-2`}>
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black text-[#002B66] uppercase border-l-4 border-[#002B66] pl-2">
                   3. PAYMENT SCHEDULE & BREAKDOWN
                 </h3>
                 <div className="print:hidden flex items-center gap-2 text-xs">
                   <label className="font-bold text-slate-600">Installments Count:</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="24"
+                  <select
                     value={installmentsCount}
                     onChange={(e) => handleInstallmentCountChange(e.target.value)}
-                    className="w-16 border border-slate-300 px-2 py-1 rounded font-bold text-center outline-none"
-                  />
+                    className="w-16 border border-slate-300 px-1 py-1 rounded font-bold text-center outline-none"
+                  >
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                  </select>
+                  <label className="font-bold text-slate-600">Frequency:</label>
+                  <select
+                    value={frequency}
+                    onChange={(e) => handleFrequencyChange(e.target.value)}
+                    className="border border-slate-300 px-1 py-1 rounded font-bold outline-none"
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
                 </div>
               </div>
               <p className="text-xs text-slate-700">
@@ -496,7 +736,7 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
             </div>
 
             {/* 4. TERMS & ACKNOWLEDGMENT */}
-            <div className="space-y-1 text-xs text-slate-700">
+            <div className={`${currentStep === 4 ? '' : 'hidden'} print:block space-y-1 text-xs text-slate-700`}>
               <h3 className="text-xs font-black text-[#002B66] uppercase border-l-4 border-[#002B66] pl-2 mb-2">
                 4. TERMS & ACKNOWLEDGMENT
               </h3>
@@ -507,20 +747,20 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
             </div>
 
             {/* 5. SIGNATURES (EDITABLE) */}
-            <div className="space-y-4 pt-4 border-t border-slate-300">
+            <div className={`${currentStep === 2 || currentStep === 4 ? '' : 'hidden'} print:block space-y-4 pt-4 border-t border-slate-300`}>
               <h3 className="text-xs font-black text-[#002B66] uppercase border-l-4 border-[#002B66] pl-2">
                 5. SIGNATURES
               </h3>
               <div className="grid grid-cols-2 gap-8 pt-6 text-center text-xs">
-                {/* Claimant Signature */}
+                {/* Accountable Payer Signature */}
                 <div className="space-y-8">
                   <div className="border-b border-slate-900 pb-1 font-bold uppercase text-slate-900">
-                    {selectedTicket.fullName || selectedTicket.username || 'Claimant Name'}
+                    {selectedTicket.fullName || selectedTicket.username || 'Accountable Payer Name'}
                   </div>
                   <div className="text-[10px] font-extrabold uppercase text-slate-600">
-                    [ INDEPENDENT SALES REPRESENTATIVE ]<br />
-                    <span className="font-normal normal-case text-slate-500">Claimant / Signature over Printed Name</span><br />
-                    <span className="font-mono mt-1 block">Date: ________________________</span>
+                    [ ACCOUNTABLE PAYER ]<br />
+                    <span className="font-normal normal-case text-slate-500">Signature over Printed Name</span><br />
+                    <span className="font-mono mt-1 block">Date: {formatTransactionDate(agreementDate)}</span>
                   </div>
                 </div>
 
@@ -534,9 +774,9 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
                     placeholder="Enter HR / Management Name"
                   />
                   <div className="text-[10px] font-extrabold uppercase text-slate-600">
-                    [ HUMAN RESOURCE ]<br />
-                    <span className="font-normal normal-case text-slate-500">Signature over Printed Name</span><br />
-                    <span className="font-mono mt-1 block">Date: ________________________</span>
+                    [ AUTHORIZED COMPANY REPRESENTATIVE ]<br />
+                    <span className="font-normal normal-case text-slate-500">Company Representative / Signature over Printed Name</span><br />
+                    <span className="font-mono mt-1 block">Date: {formatTransactionDate(agreementDate)}</span>
                   </div>
                 </div>
               </div>
@@ -553,12 +793,36 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
                   />
                   <div className="text-[10px] font-extrabold uppercase text-slate-600">
                     [ SALES SUPERVISOR ]<br />
-                    <span className="font-normal normal-case text-slate-500">Witness</span>
+                    <span className="font-normal normal-case text-slate-500">Witness</span><br />
+                    <span className="font-mono mt-1 block">Date: {formatTransactionDate(agreementDate)}</span>
                   </div>
                 </div>
               </div>
             </div>
 
+          </div>
+
+          <div className="print:hidden flex items-center justify-between border-t border-slate-200 pt-4">
+            <button
+              type="button"
+              onClick={() => setCurrentStep((step) => Math.max(1, step - 1))}
+              disabled={currentStep === 1}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={14} /> Back
+            </button>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Step {currentStep} of {steps.length}</span>
+            {currentStep < steps.length ? (
+              <button
+                type="button"
+                onClick={() => setCurrentStep((step) => Math.min(steps.length, step + 1))}
+                className="flex items-center gap-1.5 rounded-lg bg-[#002B66] px-4 py-2 text-xs font-black uppercase tracking-wider text-[#FFD700] shadow-sm hover:bg-blue-900"
+              >
+                Continue <ChevronRight size={14} />
+              </button>
+            ) : (
+              <span className="rounded-lg bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-wider text-emerald-700">Ready to Save or Print</span>
+            )}
           </div>
         </>
       )}

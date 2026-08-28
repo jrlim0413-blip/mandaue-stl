@@ -22,9 +22,31 @@ const CONFIG = {
   }
 };
 
+const PERSISTED_USER_KEY = 'stl-mandaue-current-user';
+
+const getPersistedUser = () => {
+  try {
+    const savedUser = localStorage.getItem(PERSISTED_USER_KEY);
+    return savedUser ? JSON.parse(savedUser) : null;
+  } catch {
+    localStorage.removeItem(PERSISTED_USER_KEY);
+    return null;
+  }
+};
+
 export default function App() {
   // Authentication State
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(getPersistedUser);
+
+  const handleLoginSuccess = (userData) => {
+    localStorage.setItem(PERSISTED_USER_KEY, JSON.stringify(userData));
+    setCurrentUser(userData);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(PERSISTED_USER_KEY);
+    setCurrentUser(null);
+  };
 
   // App Dashboard States
   const [activeTab, setActiveTab] = useState('pending');
@@ -327,11 +349,17 @@ export default function App() {
   const handleSaveSettlementAgreement = async (agreementData) => {
     try {
       const targetTransactionId = agreementData.transactionId || agreementData.ticketId;
+      const settlementTerms = agreementData.settlementTerms || JSON.stringify({
+        reason: agreementData.reason,
+        installments: agreementData.installments
+      });
       const { error } = await supabase
         .from('returned_winnings')
         .update({ 
           isUnderSettlement: true,
-          settlementTerms: agreementData 
+          settlementTerms,
+          settlementStatus: agreementData.settlementStatus || 'PENDING',
+          totalInstallmentAmount: agreementData.totalInstallmentAmount || null
         })
         .eq('transactionId', targetTransactionId);
 
@@ -347,7 +375,7 @@ export default function App() {
 
   // Kung HINDI PA naka-login, i-render ang Login component gamit ang prop na onLoginSuccess
   if (!currentUser) {
-    return <Login onLoginSuccess={(userData) => setCurrentUser(userData)} />;
+    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
   // Kung NAKA-LOGIN na, i-render ang buong Dashboard
@@ -369,27 +397,29 @@ export default function App() {
           isSidebarOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
           onSelectTab={(tab) => { setActiveTab(tab); setIsSidebarOpen(false); }}
-          onLogout={() => setCurrentUser(null)}
+          onLogout={handleLogout}
         />
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden w-full print:hidden">
-        <DashboardHeader
-          activeTab={activeTab}
-          loading={loading}
-          fromDate={fromDate}
-          toDate={toDate}
-          searchQuery={searchQuery}
-          totals={totals}
-          onOpenSidebar={() => setIsSidebarOpen(true)}
-          onSync={() => { fetchReturnedFromSupabase(); fetchData(); }}
-          onFromDateChange={setFromDate}
-          onToDateChange={setToDate}
-          onSearchChange={setSearchQuery}
-        />
+        <div className="print:hidden">
+          <DashboardHeader
+            activeTab={activeTab}
+            loading={loading}
+            fromDate={fromDate}
+            toDate={toDate}
+            searchQuery={searchQuery}
+            totals={totals}
+            onOpenSidebar={() => setIsSidebarOpen(true)}
+            onSync={() => { fetchReturnedFromSupabase(); fetchData(); }}
+            onFromDateChange={setFromDate}
+            onToDateChange={setToDate}
+            onSearchChange={setSearchQuery}
+          />
+        </div>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-5 md:p-7 space-y-5 bg-slate-50 flex flex-col items-center">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-5 md:p-7 space-y-5 bg-slate-50 flex flex-col items-center print:overflow-visible print:bg-white print:p-0 print:space-y-0 print:block">
           <div className="w-full max-w-6xl space-y-5">
             
             {errorMsg && (
