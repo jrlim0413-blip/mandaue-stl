@@ -132,7 +132,7 @@ const createInstallmentRows = ({
       id: index + 1,
       dueDate: getCalculatedDueDate(agreementDate, frequency, index) || existingRows[index]?.dueDate || '',
       amountDue: rowAmount,
-      status: existingRows[index]?.status || 'Pending'
+      status: existingRows[index]?.status || ''
     };
   });
 };
@@ -939,7 +939,7 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
                     <th className="border border-blue-950 p-2 w-16">Installment #</th>
                     <th className="border border-blue-950 p-2">Due Date</th>
                     <th className="border border-blue-950 p-2">Amount Due (PHP)</th>
-                    <th className="border border-blue-950 p-2">Status / Received By</th>
+                    <th className="border border-blue-950 p-2">Signature / Received By</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -965,9 +965,10 @@ export default function SettlementAgreementTab({ filteredData = [], onSaveAgreem
                       <td className="border border-slate-300 p-1.5">
                         <input
                           type="text"
-                          value={inst.status}
+                          value={inst.status || ''}
                           onChange={(e) => handleRowChange(index, 'status', e.target.value)}
-                          className="w-full bg-transparent text-center outline-none text-slate-600 text-[11px]"
+                          placeholder="Signature / Date"
+                          className="w-full bg-transparent text-center outline-none text-slate-700 text-[11px] placeholder:text-slate-300 print:placeholder:text-transparent"
                         />
                       </td>
                     </tr>
