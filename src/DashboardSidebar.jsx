@@ -49,9 +49,8 @@ export default function DashboardSidebar({
               <button
                 key={id}
                 onClick={() => onSelectTab(id)}
-                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${
-                  activeTab === id ? 'bg-[#FFD700] text-[#002B66] shadow-lg font-black lg:translate-x-1' : 'hover:bg-blue-950/60 text-blue-100 hover:text-white'
-                }`}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer ${activeTab === id ? 'bg-[#FFD700] text-[#002B66] shadow-lg font-black lg:translate-x-1' : 'hover:bg-blue-950/60 text-blue-100 hover:text-white'
+                  }`}
               >
                 <div className="flex items-center gap-3 min-w-0"><Icon size={16} className="shrink-0" /><span className="truncate">{label}</span></div>
                 {badge > 0 && (

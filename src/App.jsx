@@ -3,6 +3,11 @@ import {Eye, EyeOff, RefreshCw, CheckCircle2, ChevronRight, UserCheck, Check, Al
 import {toPng} from 'html-to-image';
 import ReturnedWinningsTab from './ReturnedWinningsTab';
 import SettlementAgreementTab from './SettlementAgreementTab';
+import MessengerTab from './MessengerTab';
+import FloatingMessengerChat from './FloatingMessengerChat';
+import AgentMascotAvatar from './AgentMascotAvatar';
+import AgentVerificationChatbot from './AgentVerificationChatbot';
+import { MessengerProvider } from './context/MessengerContext';
 import Login from './Login'; // <--- Import ang iyong Login component
 import DashboardSidebar from './DashboardSidebar';
 import DashboardHeader from './DashboardHeader';
@@ -54,6 +59,7 @@ export default function App() {
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
   const [data, setData] = useState([]);
+  const [claimedData, setClaimedData] = useState([]);
   const [returnedData, setReturnedData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -72,6 +78,8 @@ export default function App() {
   const [isCapturingImage, setIsCapturingImage] = useState(null);
   const [copiedSupervisorKey, setCopiedSupervisorKey] = useState(null);
   const [incidentReportTicket, setIncidentReportTicket] = useState(null);
+  const [floatingChatContactId, setFloatingChatContactId] = useState(null);
+  const [isAgentBotOpen, setIsAgentBotOpen] = useState(false);
 
   const handleCopyTransId = (id) => {
     if (!id) return;
@@ -182,7 +190,8 @@ export default function App() {
       const apiFromDate = getLocalDateString(pastDate);
       const apiToDate = getLocalDateString(targetEndDate);
       
-      const res = await fetch(`${cfg.baseUrl}/api/accountant/UnclaimedReceipts?isClaim=${cfg.isClaim}&from=${apiFromDate}&to=${apiToDate}`, {
+      // Fetch Unclaimed Receipts (isClaim=0)
+      const resUnclaimed = await fetch(`${cfg.baseUrl}/api/accountant/UnclaimedReceipts?isClaim=0&from=${apiFromDate}&to=${apiToDate}`, {
         method: 'GET',
         headers: {
           'Authorization': cfg.token,
@@ -190,10 +199,30 @@ export default function App() {
           'Content-Type': 'application/json'
         }
       });
-      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-      const result = await res.json();
-      const deepData = result?.data?.data || result?.data || result;
-      setData(Array.isArray(deepData) ? deepData : deepData && typeof deepData === 'object' ? [deepData] : []);
+      if (resUnclaimed.ok) {
+        const result = await resUnclaimed.json();
+        const deepData = result?.data?.data || result?.data || result;
+        setData(Array.isArray(deepData) ? deepData : deepData && typeof deepData === 'object' ? [deepData] : []);
+      }
+
+      // Fetch Claimed Receipts (isClaim=1) for verification database
+      try {
+        const resClaimed = await fetch(`${cfg.baseUrl}/api/accountant/UnclaimedReceipts?isClaim=1&from=${apiFromDate}&to=${apiToDate}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': cfg.token,
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          }
+        });
+        if (resClaimed.ok) {
+          const resultClaimed = await resClaimed.json();
+          const deepClaimed = resultClaimed?.data?.data || resultClaimed?.data || resultClaimed;
+          setClaimedData(Array.isArray(deepClaimed) ? deepClaimed : deepClaimed && typeof deepClaimed === 'object' ? [deepClaimed] : []);
+        }
+      } catch (claimErr) {
+        console.warn("Claimed receipts fetch error:", claimErr);
+      }
     } catch (error) {
       setErrorMsg(error.message);
       setData([]);
@@ -380,7 +409,8 @@ export default function App() {
 
   // Kung NAKA-LOGIN na, i-render ang buong Dashboard
   return (
-    <div className="flex h-screen bg-slate-100 font-sans text-slate-800 antialiased selection:bg-[#002B66] selection:text-white overflow-hidden">
+    <MessengerProvider currentUser={currentUser}>
+      <div className="flex h-screen bg-slate-100 font-sans text-slate-800 antialiased selection:bg-[#002B66] selection:text-white overflow-hidden">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 border-l-4 border-[#FFD700] text-xs font-semibold animate-bounce max-w-sm sm:max-w-md mx-auto print:hidden">
@@ -411,11 +441,14 @@ export default function App() {
             toDate={toDate}
             searchQuery={searchQuery}
             totals={totals}
+            currentUser={currentUser}
             onOpenSidebar={() => setIsSidebarOpen(true)}
             onSync={() => { fetchReturnedFromSupabase(); fetchData(); }}
             onFromDateChange={setFromDate}
             onToDateChange={setToDate}
             onSearchChange={setSearchQuery}
+            onOpenFullMessenger={() => setActiveTab('messenger')}
+            onOpenFloatingChat={(contactId) => setFloatingChatContactId(contactId || 'cashier-main')}
           />
         </div>
 
@@ -428,7 +461,11 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === 'settlement' ? (
+            {activeTab === 'messenger' ? (
+              <MessengerTab
+                currentUser={currentUser || { username: 'staff', full_name: 'Current Staff', role: 'Staff' }}
+              />
+            ) : activeTab === 'settlement' ? (
               <SettlementAgreementTab 
                 filteredData={returnedData} 
                 isLoadingApi={loading}
@@ -780,6 +817,41 @@ export default function App() {
           formatDrawTime={formatDrawTime}
         />
       )}
+
+      {/* Floating Facebook-Style Messenger Chat Popup */}
+      {floatingChatContactId && (
+        <FloatingMessengerChat
+          contactId={floatingChatContactId}
+          currentUser={currentUser}
+          onClose={() => setFloatingChatContactId(null)}
+          onOpenFullMessenger={() => {
+            setFloatingChatContactId(null);
+            setActiveTab('messenger');
+          }}
+        />
+      )}
+
+      {/* Floating Mascot Agent Character on the Right Side (Separate from Messenger) */}
+      <AgentMascotAvatar
+        isOpen={isAgentBotOpen}
+        onClick={() => setIsAgentBotOpen(!isAgentBotOpen)}
+        unclaimedCount={pendingFilteredData.length}
+      />
+
+      {/* Floating Dedicated Receipt & Ticket Verification Chatbot Window */}
+      <AgentVerificationChatbot
+        isOpen={isAgentBotOpen}
+        onClose={() => setIsAgentBotOpen(false)}
+        rawApiData={data}
+        unclaimedList={pendingFilteredData}
+        claimedList={claimedData}
+        returnedList={returnedData}
+        currentUser={currentUser || { username: 'staff', full_name: 'Current Staff', role: 'Staff' }}
+        onOpenQrModal={(ticket) => handleOpenQrModal(ticket)}
+        onIssueIncidentReport={(ticket) => setIncidentReportTicket(ticket)}
+        onCopyTransId={(id) => handleCopyTransId(id)}
+      />
     </div>
+  </MessengerProvider>
   );
 }
